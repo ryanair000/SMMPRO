@@ -1,0 +1,147 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.textareaWrapper {
+  position: relative;
+  margin-bottom: 24px;
+}
+
+.characterCount {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.leftControls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.iconBtn {
+  background: var(--surface-color);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  color: var(--text-primary);
+  display: inline-block;
+}
+
+.iconBtn:hover {
+  background: rgba(0,0,0,0.05);
+}
+
+.aiBtn {
+  background: linear-gradient(135deg, #a855f7, #ec4899);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.2);
+}
+
+.aiBtn:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(236, 72, 153, 0.3);
+}
+
+.aiBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.imagePreviewContainer {
+  position: relative;
+  width: fit-content;
+  margin-bottom: 24px;
+}
+
+.imagePreview {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 8px;
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.removeImageBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.removeImageBtn:hover {
+  background: rgba(0,0,0,0.8);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 50%;
+  border-top-color: #fff;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.notification {
+  padding: 16px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  animation: fadeInUp 0.3s ease forwards;
+}
+
+.success {
+  background: rgba(46, 160, 67, 0.15);
+  border: 1px solid var(--success-color);
+  color: #00a400;
+}
+
+.error {
+  background: rgba(228, 28, 56, 0.15);
+  border: 1px solid var(--error-color);
+  color: #e41c38;
+}
