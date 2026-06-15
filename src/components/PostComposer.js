@@ -65,10 +65,18 @@ export default function PostComposer() {
       updateQueueItem(i, { status: 'generating' });
       
       try {
+        // Convert File to Base64 just-in-time for the API
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(item.file);
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = error => reject(error);
+        });
+
         const res = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: item.preview })
+          body: JSON.stringify({ imageBase64: base64 })
         });
         const data = await res.json();
         
