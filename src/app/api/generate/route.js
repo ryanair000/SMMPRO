@@ -55,7 +55,7 @@ export async function POST(request) {
     // 2. Fallback to Google AI Studio if OpenRouter didn't yield a caption
     if (!caption && GEMINI_KEY && GEMINI_KEY !== 'your_gemini_api_key_here') {
       try {
-        const gemRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`, {
+        const gemRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_KEY}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
