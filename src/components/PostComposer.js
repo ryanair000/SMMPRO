@@ -1,16 +1,15 @@
 "use client";
 
 import { useState, useRef } from 'react';
+import toast from 'react-hot-toast';
 import styles from './PostComposer.module.css';
 
 export default function PostComposer() {
   const [message, setMessage] = useState('');
-  const [targetGroups, setTargetGroups] = useState('676582708737987, 8051092188292297, 1747147299313262, 1249030373011362, 428755375095790, 3217380681748224, argentinathefutbolgoat, 1343083937401498, 601926075463454, 2996487803717552, 1183633089289155');
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [notification, setNotification] = useState(null);
   const fileInputRef = useRef(null);
 
   const maxLength = 2200;
@@ -30,7 +29,7 @@ export default function PostComposer() {
   const handleGenerateCaption = async () => {
     if (!imagePreview) return;
     setIsGenerating(true);
-    setNotification(null);
+    const toastId = toast.loading('Generating perfect caption...');
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
@@ -40,8 +39,9 @@ export default function PostComposer() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to generate caption');
       setMessage(data.caption);
+      toast.success('Caption generated!', { id: toastId });
     } catch (err) {
-      setNotification({ type: 'error', text: err.message });
+      toast.error(err.message, { id: toastId });
     } finally {
       setIsGenerating(false);
     }
@@ -52,13 +52,12 @@ export default function PostComposer() {
     if (!message.trim() && !imageFile) return;
 
     setIsSubmitting(true);
-    setNotification(null);
+    const toastId = toast.loading('Publishing to Facebook...');
 
     try {
       const formData = new FormData();
       if (message.trim()) formData.append('message', message);
       if (imageFile) formData.append('image', imageFile);
-      if (targetGroups.trim()) formData.append('targetGroups', targetGroups);
 
       const res = await fetch('/api/post', {
         method: 'POST',
@@ -74,9 +73,10 @@ export default function PostComposer() {
       // Check results for partial group failures
       const errors = data.results?.filter(r => r.status.includes('Failed') || r.status.includes('Error'));
       if (errors && errors.length > 0) {
-        setNotification({ type: 'error', text: `Posted to Page, but failed groups: ${errors.map(e => e.target).join(', ')}` });
+        const errorReasons = [...new Set(errors.map(e => e.status))].join(' | ');
+        toast.error(`Posted to Page! But Admin Group failed. Meta API Error: ${errorReasons}`, { id: toastId, duration: 6000 });
       } else {
-        setNotification({ type: 'success', text: 'Post published successfully!' });
+        toast.success('Post published successfully to Page and Admin Group!', { id: toastId });
       }
       
       setMessage('');
@@ -84,99 +84,121 @@ export default function PostComposer() {
       setImagePreview(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
-      setNotification({ type: 'error', text: err.message });
+      toast.error(err.message, { id: toastId });
     } finally {
       setIsSubmitting(false);
-      setTimeout(() => setNotification(null), 8000); // Wait longer to show complex errors
     }
   };
 
   return (
-    <div className={styles.container}>
-      {notification && (
-        <div className={`${styles.notification} ${styles[notification.type]}`}>
-          {notification.text}
-        </div>
-      )}
-      
-      <form onSubmit={handleSubmit}>
-        <div className={styles.textareaWrapper}>
-          <textarea
-            className="input-field"
-            rows="5"
-            placeholder="What's on your mind?"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            maxLength={maxLength}
-          />
-          <span className={styles.characterCount}>
-            {message.length} / {maxLength}
-          </span>
-        </div>
-
-        <div className={styles.textareaWrapper} style={{marginBottom: '24px'}}>
-          <input
-            type="text"
-            className="input-field"
-            placeholder="Crosspost to Group IDs (optional, comma-separated e.g., 1234, 5678)"
-            value={targetGroups}
-            onChange={(e) => setTargetGroups(e.target.value)}
-          />
-        </div>
-        
-        {imagePreview && (
-          <div className={styles.imagePreviewContainer}>
-            <img src={imagePreview} alt="Preview" className={styles.imagePreview} />
-            <button type="button" className={styles.removeImageBtn} onClick={() => {
-              setImageFile(null);
-              setImagePreview(null);
-              if (fileInputRef.current) fileInputRef.current.value = '';
-            }}>✕</button>
-          </div>
-        )}
-
-        <div className={styles.controls}>
-          <div className={styles.leftControls}>
-            <input 
-              type="file" 
-              accept="image/*" 
-              ref={fileInputRef}
-              onChange={handleImageChange} 
-              style={{ display: 'none' }}
-              id="image-upload"
+    <div className={styles.splitGrid}>
+      {/* LEFT PANE - CONTROLS */}
+      <div className={`glass-panel ${styles.controlPane}`}>
+        <h2 className={styles.paneTitle}>Create Post</h2>
+        <form onSubmit={handleSubmit} className={styles.formContent}>
+          <div className={styles.textareaWrapper}>
+            <textarea
+              className="input-field"
+              placeholder="What's on your mind?"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              maxLength={maxLength}
+              disabled={isSubmitting || isGenerating}
             />
-            <label htmlFor="image-upload" className={styles.iconBtn}>
-              📷 Add Photo
-            </label>
-            {imagePreview && (
+            <span className={styles.characterCount}>
+              {message.length} / {maxLength}
+            </span>
+          </div>
+
+          <div className={styles.controls}>
+            <div className={styles.leftControls}>
+              <input 
+                type="file" 
+                accept="image/*" 
+                ref={fileInputRef}
+                onChange={handleImageChange} 
+                style={{ display: 'none' }}
+                id="image-upload"
+              />
+              <label htmlFor="image-upload" className={`${styles.iconBtn} ${isSubmitting ? styles.disabled : ''}`}>
+                📷 Add Photo
+              </label>
+              {imagePreview && (
+                <button 
+                  type="button" 
+                  className={styles.aiBtn} 
+                  onClick={handleGenerateCaption}
+                  disabled={isGenerating || isSubmitting}
+                >
+                  {isGenerating ? '✨ Generating...' : '✨ Auto-Generate'}
+                </button>
+              )}
+            </div>
+            
+            <div className={styles.actions}>
               <button 
-                type="button" 
-                className={styles.aiBtn} 
-                onClick={handleGenerateCaption}
-                disabled={isGenerating}
+                type="submit" 
+                className="btn" 
+                disabled={(!message.trim() && !imageFile) || isSubmitting}
               >
-                {isGenerating ? '✨ Generating...' : '✨ Auto-Generate Caption'}
+                {isSubmitting ? (
+                  <>
+                    <span className={styles.spinner}></span>
+                    Publishing...
+                  </>
+                ) : (
+                  'Publish Post'
+                )}
               </button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      {/* RIGHT PANE - PREVIEW */}
+      <div className={`glass-panel ${styles.previewPane}`}>
+        <h2 className={styles.paneTitle}>Live Preview</h2>
+        <div className={styles.previewContent}>
+          <div className={styles.fbMockup}>
+            <div className={styles.fbHeader}>
+              <div className={styles.fbAvatar}></div>
+              <div className={styles.fbMeta}>
+                <div className={styles.fbName}>PlayMechi</div>
+                <div className={styles.fbTime}>Just now · 🌍</div>
+              </div>
+            </div>
+            
+            <div className={styles.fbBody}>
+              {isGenerating ? (
+                <div className={styles.skeletonText}>
+                  <div className={styles.skeletonLine}></div>
+                  <div className={styles.skeletonLine}></div>
+                  <div className={styles.skeletonLine} style={{width: '60%'}}></div>
+                </div>
+              ) : (
+                message && <p className={styles.fbText}>{message}</p>
+              )}
+            </div>
+
+            {imagePreview && (
+              <div className={styles.fbImageWrapper}>
+                <img src={imagePreview} alt="Preview" className={styles.fbImage} />
+                <button type="button" className={styles.removeImageBtn} onClick={() => {
+                  setImageFile(null);
+                  setImagePreview(null);
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+                }}>✕</button>
+              </div>
+            )}
+
+            {!message && !imagePreview && !isGenerating && (
+              <div className={styles.emptyState}>
+                Your preview will appear here
+              </div>
             )}
           </div>
-          <div className={styles.actions}>
-            <button 
-              type="submit" 
-              className="btn" 
-              disabled={(!message.trim() && !imageFile) || isSubmitting}
-            >
-              {isSubmitting ? (
-                <>
-                  <span className={styles.spinner}></span>
-                  Publishing...
-                </>
-              ) : (
-                'Publish Post'
-              )}
-            </button>
-          </div>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

@@ -1,43 +1,44 @@
 .mainContainer {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 80px 24px;
-  width: 100%;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .header {
-  text-align: center;
-  margin-bottom: 48px;
+  padding: 20px 32px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-color);
+  backdrop-filter: blur(16px);
+  z-index: 10;
 }
 
 .logoMark {
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, var(--primary-color), #00c6ff);
-  border-radius: 12px;
-  margin: 0 auto 24px;
+  width: 32px;
+  height: 32px;
+  background: var(--primary-color);
+  border-radius: 8px;
   box-shadow: var(--shadow-glow);
 }
 
 .title {
-  font-size: 2.5rem;
+  font-size: 1.2rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
-  margin-bottom: 12px;
-  background: linear-gradient(to right, #1c1e21, var(--text-secondary));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
 }
 
 .subtitle {
   color: var(--text-secondary);
-  font-size: 1.1rem;
+  font-size: 0.9rem;
+  margin-left: auto;
 }
 
-.composerWrapper {
-  width: 100%;
-  padding: 32px;
+.dashboard {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  padding: 24px;
 }

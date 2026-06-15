@@ -4,14 +4,14 @@
   --bg-color: #ffffff;
   --surface-color: rgba(255, 255, 255, 0.8);
   --surface-border: rgba(0, 0, 0, 0.08);
-  --primary-color: #0866ff;
-  --primary-hover: #1b74e4;
+  --primary-color: #800000;
+  --primary-hover: #600000;
   --text-primary: #1c1e21;
   --text-secondary: #65676b;
   --error-color: #e41c38;
   --success-color: #00a400;
   
-  --shadow-glow: 0 0 40px rgba(8, 102, 255, 0.1);
+  --shadow-glow: 0 0 40px rgba(128, 0, 0, 0.1);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05);
 }
 
@@ -25,12 +25,14 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--bg-color);
   color: var(--text-primary);
-  min-height: 100vh;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   background-image: 
-    radial-gradient(circle at 15% 50%, rgba(8, 102, 255, 0.03), transparent 25%),
-    radial-gradient(circle at 85% 30%, rgba(8, 102, 255, 0.03), transparent 25%);
+    radial-gradient(circle at 15% 50%, rgba(128, 0, 0, 0.04), transparent 25%),
+    radial-gradient(circle at 85% 30%, rgba(128, 0, 0, 0.04), transparent 25%);
 }
 
 a {
@@ -91,7 +93,7 @@ a {
 .btn:hover:not(:disabled) {
   background: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(8, 102, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(128, 0, 0, 0.3);
 }
 
 .btn:active:not(:disabled) {

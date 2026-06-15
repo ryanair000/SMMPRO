@@ -25,8 +25,14 @@ export async function POST(request) {
     if (message) fbFormData.append('message', message);
     fbFormData.append('access_token', PAGE_TOKEN);
     
+    let blob = null;
+    let fileName = 'image.jpg';
     if (image) {
-      fbFormData.append('source', image);
+      const arrayBuffer = await image.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      blob = new Blob([buffer], { type: image.type });
+      fileName = image.name || 'image.jpg';
+      fbFormData.append('source', blob, fileName);
     }
 
     const response = await fetch(endpoint, {
@@ -58,8 +64,8 @@ export async function POST(request) {
             const groupFormData = new FormData();
             if (message) groupFormData.append('message', message);
             groupFormData.append('access_token', USER_TOKEN);
-            if (image) {
-              groupFormData.append('source', image); // Re-append the image file
+            if (image && blob) {
+              groupFormData.append('source', blob, fileName);
             }
 
             const gRes = await fetch(groupEndpoint, {
