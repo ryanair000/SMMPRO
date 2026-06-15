@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 
+export const maxDuration = 60;
+
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
-const OR_KEY = process.env.OPENROUTER_API_KEY;
-const GEMINI_KEY = process.env.GEMINI_API_KEY;
-const FB_PAGE_ID = process.env.NEXT_PUBLIC_FB_PAGE_ID;
+const OPENAI_KEY = process.env.OPENAI_API_KEY?.trim();
+const OR_KEY = process.env.OPENROUTER_API_KEY?.trim();
+const GEMINI_KEY = process.env.GEMINI_API_KEY?.trim();
+const FB_PAGE_ID = process.env.NEXT_PUBLIC_FB_PAGE_ID?.trim();
 const FB_PAGE_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN?.trim();
 const FB_USER_TOKEN = process.env.FB_USER_ACCESS_TOKEN?.trim();
 const ADMIN_GROUP_ID = '1497786931895263';
@@ -24,19 +27,17 @@ export async function POST(request) {
     const update = await request.json();
     chatId = update.message?.chat?.id;
     
-    // Ignore updates that aren't messages with photos
     if (!update.message || !update.message.photo) {
       if (update.message?.text) {
-        await sendMessage(chatId, "👋 Welcome to AutoPoster! Send me an image, and I will auto-caption and post it to Facebook for you.");
+        await sendMessage(chatId, "👋 Welcome to AutoPoster! Send me an image, and I will auto-caption and post it to Facebook using OpenAI.");
       }
       return NextResponse.json({ ok: true });
     }
 
     await sendMessage(chatId, "⏳ Image received! Generating AI caption...");
 
-    // 1. Get image from Telegram
     const photos = update.message.photo;
-    const bestPhoto = photos[photos.length - 1]; // highest resolution
+    const bestPhoto = photos[photos.length - 1]; 
     
     const fileRes = await fetch(`${TELEGRAM_API}/getFile?file_id=${bestPhoto.file_id}`);
     const fileData = await fileRes.json();
@@ -47,33 +48,31 @@ export async function POST(request) {
     const imageArrayBuffer = await imageRes.arrayBuffer();
     const imageBuffer = Buffer.from(imageArrayBuffer);
     
-    // Convert to base64 for AI
     const base64Data = imageBuffer.toString('base64');
     const mimeType = 'image/jpeg';
     
-    // 2. Generate Caption
     const promptText = "Extract any text from this image (OCR). Then, write an engaging World Cup football/soccer update for the Facebook page 'PlayMechi'. Format the caption professionally with a catchy hook, the main update/score/news from the image, and relevant World Cup hashtags (e.g., #WorldCup, #PlayMechi, #Football). Keep it exciting! CRITICAL: DO NOT use any markdown formatting like **asterisks** or bolding. Use plain text only. Only return the caption text without any extra conversation.";
 
     let caption = null;
 
-    if (OR_KEY && OR_KEY !== 'your_openrouter_api_key_here') {
+    if (OPENAI_KEY) {
       try {
-        const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        const oaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${OR_KEY}`, 'Content-Type': 'application/json' },
+          headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'google/gemini-3.5-flash',
+            model: 'gpt-4o-mini',
             messages: [{ role: 'user', content: [{ type: 'text', text: promptText }, { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}` } }] }]
           })
         });
-        const orData = await orRes.json();
-        if (orRes.ok && orData.choices?.[0]?.message?.content) caption = orData.choices[0].message.content.trim();
-      } catch (err) { console.warn("OR failed"); }
+        const oaiData = await oaiRes.json();
+        if (oaiRes.ok && oaiData.choices?.[0]?.message?.content) caption = oaiData.choices[0].message.content.trim();
+      } catch (err) { console.warn("OpenAI failed"); }
     }
 
     if (!caption && GEMINI_KEY) {
       try {
-        const gemRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_KEY}`, {
+        const gemRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contents: [{ parts: [{ text: promptText }, { inline_data: { mime_type: mimeType, data: base64Data } }] }] })
@@ -83,11 +82,10 @@ export async function POST(request) {
       } catch (err) { console.warn("Gemini failed"); }
     }
 
-    if (!caption) throw new Error("Failed to generate caption.");
+    if (!caption) throw new Error("Failed to generate caption with available APIs.");
 
     await sendMessage(chatId, `✨ Caption generated:\n\n${caption}\n\n🚀 Publishing to Facebook...`);
 
-    // 3. Post to Facebook
     const blob = new Blob([imageBuffer], { type: mimeType });
     const fileName = 'telegram_photo.jpg';
 
@@ -126,6 +124,6 @@ export async function POST(request) {
     if (chatId) {
        await sendMessage(chatId, `❌ Error: ${error.message}`);
     }
-    return NextResponse.json({ ok: true }); // Always return 200 to Telegram so it doesn't retry
+    return NextResponse.json({ ok: true }); 
   }
 }
