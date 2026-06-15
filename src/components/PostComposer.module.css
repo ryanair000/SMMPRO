@@ -23,52 +23,10 @@
   color: var(--text-secondary);
 }
 
-.formContent {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  height: 100%;
-}
-
-.textareaWrapper {
-  position: relative;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.textareaWrapper textarea {
-  flex: 1;
-  resize: none;
-  min-height: 200px;
-}
-
-.characterCount {
-  position: absolute;
-  bottom: 12px;
-  right: 16px;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  pointer-events: none;
-}
-
-/* Controls */
-.controls {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  background: #f9f9f9;
-  padding: 16px;
-  border-radius: 12px;
-  border: 1px solid var(--surface-border);
-}
-
-.leftControls {
+.topControls {
   display: flex;
   gap: 12px;
-  align-items: center;
+  margin-bottom: 20px;
 }
 
 .iconBtn {
@@ -82,6 +40,8 @@
   transition: all 0.2s;
   color: var(--text-primary);
   display: inline-block;
+  flex: 1;
+  text-align: center;
 }
 
 .iconBtn:hover:not(.disabled) {
@@ -102,6 +62,7 @@
   font-size: 0.95rem;
   font-weight: 600;
   transition: all 0.2s;
+  flex: 2;
   box-shadow: 0 4px 12px rgba(128, 0, 0, 0.2);
 }
 
@@ -114,6 +75,163 @@
 .aiBtn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Queue List */
+.queueContainer {
+  display: flex;
+  overflow-x: auto;
+  gap: 12px;
+  padding: 12px 0;
+  margin-bottom: 24px;
+  scrollbar-width: thin;
+}
+
+.queueItem {
+  position: relative;
+  min-width: 80px;
+  width: 80px;
+  height: 100px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #f0f0f0;
+  flex-shrink: 0;
+}
+
+.queueItem.active {
+  border-color: var(--primary-color);
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(128,0,0,0.2);
+}
+
+.queueItem img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.9;
+}
+
+.queueItem:hover img {
+  opacity: 1;
+}
+
+.queueInfo {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0,0,0,0.7);
+  color: white;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 0.6rem;
+  line-height: 1.2;
+}
+
+.queueStatus {
+  color: #ffca28;
+  text-transform: capitalize;
+}
+
+.status-ready .queueStatus { color: #4caf50; }
+.status-published .queueStatus { color: #2196f3; }
+.status-error .queueStatus { color: #f44336; }
+
+.removeQueueBtn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 10px;
+}
+.removeQueueBtn:hover { background: red; }
+
+/* Active Editor */
+.activeEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex: 1;
+}
+
+.activeEditor h3 {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.textareaWrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.textareaWrapper textarea {
+  flex: 1;
+  resize: none;
+  min-height: 150px;
+}
+
+.characterCount {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+/* Scheduling Block */
+.schedulingBlock {
+  background: #f9f9f9;
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.schedulingBlock h3 {
+  font-size: 0.95rem;
+  margin-bottom: 12px;
+}
+
+.scheduleRow {
+  display: flex;
+  gap: 16px;
+}
+
+.scheduleInput {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scheduleInput label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.scheduleInput input {
+  padding: 10px;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  font-family: inherit;
 }
 
 /* Spinner */
@@ -202,27 +320,6 @@
   width: 100%;
   height: auto;
   display: block;
-}
-
-.removeImageBtn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: rgba(0,0,0,0.6);
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background 0.2s;
-}
-.removeImageBtn:hover {
-  background: rgba(0,0,0,0.8);
 }
 
 .emptyState {
