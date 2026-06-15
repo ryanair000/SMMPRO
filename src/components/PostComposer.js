@@ -157,7 +157,7 @@ export default function PostComposer() {
     <div className={styles.splitGrid}>
       {/* LEFT PANE - CONTROLS & QUEUE */}
       <div className={`glass-panel ${styles.controlPane}`}>
-        <h2 className={styles.paneTitle}>Bulk Composer (Up to 20)</h2>
+        <h2 className={styles.paneTitle}>Campaign Composer (Up to 20)</h2>
         
         <div className={styles.topControls}>
           <input 
