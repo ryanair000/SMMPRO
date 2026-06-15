@@ -210,24 +210,7 @@ export default function PostComposer() {
           </div>
         )}
 
-        {selectedItem && (
-          <div className={styles.activeEditor}>
-            <h3>Edit Caption (Post {selectedIndex + 1})</h3>
-            <div className={styles.textareaWrapper}>
-              <textarea
-                className="input-field"
-                placeholder="Caption for this image..."
-                value={selectedItem.caption}
-                onChange={(e) => updateQueueItem(selectedIndex, { caption: e.target.value })}
-                maxLength={maxLength}
-                disabled={isSubmitting || isGenerating}
-              />
-              <span className={styles.characterCount}>
-                {selectedItem.caption.length} / {maxLength}
-              </span>
-            </div>
-          </div>
-        )}
+
 
         <div className={styles.schedulingBlock}>
           <h3>Scheduling Options</h3>

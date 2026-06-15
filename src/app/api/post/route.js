@@ -7,9 +7,9 @@ export async function POST(request) {
     const image = formData.get('image'); // This is a File object if present
     const scheduledTime = formData.get('scheduledPublishTime'); // Unix timestamp (optional)
 
-    const PAGE_ID = process.env.NEXT_PUBLIC_FB_PAGE_ID;
-    const PAGE_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN;
-    const USER_TOKEN = process.env.FB_USER_ACCESS_TOKEN;
+    const PAGE_ID = process.env.NEXT_PUBLIC_FB_PAGE_ID?.trim();
+    const PAGE_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN?.trim();
+    const USER_TOKEN = process.env.FB_USER_ACCESS_TOKEN?.trim();
     const ADMIN_GROUP_ID = '1497786931895263';
 
     if (!PAGE_ID || !PAGE_TOKEN || PAGE_ID === 'your_page_id_here') {

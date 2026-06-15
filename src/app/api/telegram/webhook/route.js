@@ -5,8 +5,8 @@ const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
 const OR_KEY = process.env.OPENROUTER_API_KEY;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
 const FB_PAGE_ID = process.env.NEXT_PUBLIC_FB_PAGE_ID;
-const FB_PAGE_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN;
-const FB_USER_TOKEN = process.env.FB_USER_ACCESS_TOKEN;
+const FB_PAGE_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN?.trim();
+const FB_USER_TOKEN = process.env.FB_USER_ACCESS_TOKEN?.trim();
 const ADMIN_GROUP_ID = '1497786931895263';
 
 async function sendMessage(chatId, text) {
