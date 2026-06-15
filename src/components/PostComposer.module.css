@@ -81,9 +81,10 @@
 .queueContainer {
   display: flex;
   overflow-x: auto;
-  gap: 12px;
-  padding: 12px 0;
-  margin-bottom: 24px;
+  gap: 16px;
+  padding: 12px 0 16px 0;
+  margin-top: 10px;
+  margin-bottom: 30px;
   scrollbar-width: thin;
 }
 
@@ -136,11 +137,13 @@
 .queueStatus {
   color: #ffca28;
   text-transform: capitalize;
+  font-weight: 700;
+  letter-spacing: 0.5px;
 }
 
-.status-ready .queueStatus { color: #4caf50; }
-.status-published .queueStatus { color: #2196f3; }
-.status-error .queueStatus { color: #f44336; }
+.status-ready .queueStatus { color: #81c784; }
+.status-published .queueStatus { color: #64b5f6; }
+.status-error .queueStatus { color: #ff8a80; }
 
 .removeQueueBtn {
   position: absolute;
@@ -185,6 +188,7 @@
   flex: 1;
   resize: none;
   min-height: 150px;
+  padding-bottom: 36px;
 }
 
 .characterCount {
