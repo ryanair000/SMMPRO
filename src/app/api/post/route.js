@@ -1,5 +1,41 @@
 import { NextResponse } from 'next/server';
 
+function jsonError(message, status, details = null) {
+  return NextResponse.json({ error: message, details }, { status });
+}
+
+async function readFacebookResponse(response) {
+  const text = await response.text();
+
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { error: { message: text || response.statusText || 'Unknown Facebook response' } };
+  }
+}
+
+async function postToFacebook(endpoint, formData, target) {
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    body: formData
+  });
+  const data = await readFacebookResponse(response);
+
+  if (!response.ok || data.error) {
+    const message = data.error?.message || `Facebook ${target} request failed`;
+    const code = data.error?.code;
+    const type = data.error?.type;
+
+    return {
+      ok: false,
+      error: `${target} Error: ${message}`,
+      details: { code, type, status: response.status }
+    };
+  }
+
+  return { ok: true, data };
+}
+
 export async function POST(request) {
   try {
     const formData = await request.formData();
@@ -13,9 +49,11 @@ export async function POST(request) {
     const ADMIN_GROUP_ID = '1497786931895263';
 
     if (!PAGE_ID || !PAGE_TOKEN || PAGE_ID === 'your_page_id_here') {
-      return NextResponse.json({ 
-        error: 'Facebook page credentials are not configured in .env.local' 
-      }, { status: 500 });
+      return jsonError('Facebook page credentials are not configured in .env.local', 500);
+    }
+
+    if (!message.trim() && !image) {
+      return jsonError('Add a caption or image before publishing.', 400);
     }
 
     const endpoint = image 
@@ -41,18 +79,12 @@ export async function POST(request) {
       fbFormData.append('source', blob, fileName);
     }
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      body: fbFormData
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(`Page Error: ${data.error?.message || 'Failed to post'}`);
+    const pageResult = await postToFacebook(endpoint, fbFormData, 'Page');
+    if (!pageResult.ok) {
+      return jsonError(pageResult.error, 502, pageResult.details);
     }
 
-    const results = [{ target: 'Page', id: data.id, status: 'Success' }];
+    const results = [{ target: 'Page', id: pageResult.data.id, status: 'Success' }];
 
     // Crosspost to the Admin Group
     if (!USER_TOKEN || USER_TOKEN === 'your_user_token_here') {
@@ -76,16 +108,11 @@ export async function POST(request) {
           groupFormData.append('source', blob, fileName);
         }
 
-        const gRes = await fetch(groupEndpoint, {
-          method: 'POST',
-          body: groupFormData
-        });
-        const gData = await gRes.json();
-        
-        if (!gRes.ok) {
-          results.push({ target: 'Admin Group', status: `Failed: ${gData.error?.message}` });
+        const groupResult = await postToFacebook(groupEndpoint, groupFormData, 'Admin Group');
+        if (!groupResult.ok) {
+          results.push({ target: 'Admin Group', status: `Failed: ${groupResult.error}` });
         } else {
-          results.push({ target: 'Admin Group', id: gData.id, status: 'Success' });
+          results.push({ target: 'Admin Group', id: groupResult.data.id, status: 'Success' });
         }
       } catch (e) {
         results.push({ target: 'Admin Group', status: `Error: ${e.message}` });

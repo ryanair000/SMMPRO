@@ -134,13 +134,28 @@ export default function PostComposer() {
           body: formData,
         });
 
-        const data = await res.json();
+        const text = await res.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          data = { error: text || 'Failed to post' };
+        }
 
         if (!res.ok) {
-          throw new Error(data.error || 'Failed to post');
+          const fbCode = data.details?.code ? ` (code ${data.details.code})` : '';
+          throw new Error(`${data.error || 'Failed to post'}${fbCode}`);
         }
 
         updateQueueItem(i, { status: 'published' });
+        const failedTargets = data.results
+          ?.filter(result => result.status && result.status !== 'Success')
+          .map(result => `${result.target}: ${result.status}`);
+
+        if (failedTargets?.length) {
+          toast.error(`Image ${i+1}: ${failedTargets.join('; ')}`);
+        }
+
         successCount++;
       } catch (err) {
         toast.error(`Image ${i+1}: ${err.message}`);
