@@ -6,8 +6,6 @@ export const maxDuration = 60;
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
 const OPENAI_KEY = process.env.OPENAI_API_KEY?.trim();
-const OR_KEY = process.env.OPENROUTER_API_KEY?.trim();
-const GEMINI_KEY = process.env.GEMINI_API_KEY?.trim();
 const FB_PAGE_ID = process.env.NEXT_PUBLIC_FB_PAGE_ID?.trim();
 const FB_PAGE_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN?.trim();
 const FB_USER_TOKEN = process.env.FB_USER_ACCESS_TOKEN?.trim();
@@ -54,36 +52,22 @@ export async function POST(request) {
     
     const promptText = CHEZAHUB_CAPTION_PROMPT;
 
-    let caption = null;
-
-    if (OPENAI_KEY) {
-      try {
-        const oaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [{ role: 'user', content: [{ type: 'text', text: promptText }, { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}` } }] }]
-          })
-        });
-        const oaiData = await oaiRes.json();
-        if (oaiRes.ok && oaiData.choices?.[0]?.message?.content) caption = oaiData.choices[0].message.content.trim();
-      } catch (err) { console.warn("OpenAI failed"); }
+    if (!OPENAI_KEY) {
+      throw new Error("OPENAI_API_KEY is not configured.");
     }
 
-    if (!caption && GEMINI_KEY) {
-      try {
-        const gemRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: promptText }, { inline_data: { mime_type: mimeType, data: base64Data } }] }] })
-        });
-        const gemData = await gemRes.json();
-        if (gemRes.ok && gemData.candidates?.[0]?.content?.parts?.[0]?.text) caption = gemData.candidates[0].content.parts[0].text.trim();
-      } catch (err) { console.warn("Gemini failed"); }
-    }
+    const oaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: [{ type: 'text', text: promptText }, { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}` } }] }]
+      })
+    });
+    const oaiData = await oaiRes.json();
+    const caption = oaiData.choices?.[0]?.message?.content?.trim();
 
-    if (!caption) throw new Error("Failed to generate caption with available APIs.");
+    if (!caption) throw new Error(oaiData.error?.message || "OpenAI failed to generate a caption.");
 
     await sendMessage(chatId, `Caption generated:\n\n${caption}\n\nPublishing...`);
 
