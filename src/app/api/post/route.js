@@ -4,6 +4,11 @@ function jsonError(message, status, details = null) {
   return NextResponse.json({ error: message, details }, { status });
 }
 
+function graphUrl(path) {
+  const version = process.env.META_GRAPH_VERSION?.trim() || 'v20.0';
+  return `https://graph.facebook.com/${version}/${path.replace(/^\//, '')}`;
+}
+
 async function readFacebookResponse(response) {
   const text = await response.text();
 
@@ -36,29 +41,59 @@ async function postToFacebook(endpoint, formData, target) {
   return { ok: true, data };
 }
 
+async function postToInstagram({ igUserId, accessToken, caption, imageUrl }) {
+  const createFormData = new FormData();
+  createFormData.append('image_url', imageUrl);
+  if (caption) createFormData.append('caption', caption);
+  createFormData.append('access_token', accessToken);
+
+  const createResult = await postToFacebook(
+    graphUrl(`/${igUserId}/media`),
+    createFormData,
+    'Instagram'
+  );
+
+  if (!createResult.ok) {
+    return createResult;
+  }
+
+  const creationId = createResult.data.id;
+  const publishFormData = new FormData();
+  publishFormData.append('creation_id', creationId);
+  publishFormData.append('access_token', accessToken);
+
+  return postToFacebook(
+    graphUrl(`/${igUserId}/media_publish`),
+    publishFormData,
+    'Instagram'
+  );
+}
+
 export async function POST(request) {
   try {
     const formData = await request.formData();
     const message = formData.get('message') || '';
     const image = formData.get('image'); // This is a File object if present
+    const imageUrl = formData.get('imageUrl')?.toString().trim() || '';
     const scheduledTime = formData.get('scheduledPublishTime'); // Unix timestamp (optional)
 
     const PAGE_ID = process.env.NEXT_PUBLIC_FB_PAGE_ID?.trim();
     const PAGE_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN?.trim();
     const USER_TOKEN = process.env.FB_USER_ACCESS_TOKEN?.trim();
+    const IG_USER_ID = process.env.IG_USER_ID?.trim();
     const ADMIN_GROUP_ID = '1497786931895263';
 
     if (!PAGE_ID || !PAGE_TOKEN || PAGE_ID === 'your_page_id_here') {
       return jsonError('Facebook page credentials are not configured in .env.local', 500);
     }
 
-    if (!message.trim() && !image) {
+    if (!message.trim() && !image && !imageUrl) {
       return jsonError('Add a caption or image before publishing.', 400);
     }
 
-    const endpoint = image 
-      ? `https://graph.facebook.com/v20.0/${PAGE_ID}/photos`
-      : `https://graph.facebook.com/v20.0/${PAGE_ID}/feed`;
+    const endpoint = image || imageUrl
+      ? graphUrl(`/${PAGE_ID}/photos`)
+      : graphUrl(`/${PAGE_ID}/feed`);
 
     const fbFormData = new FormData();
     if (message) fbFormData.append('message', message);
@@ -77,6 +112,8 @@ export async function POST(request) {
       blob = new Blob([buffer], { type: image.type });
       fileName = image.name || 'image.jpg';
       fbFormData.append('source', blob, fileName);
+    } else if (imageUrl) {
+      fbFormData.append('url', imageUrl);
     }
 
     const pageResult = await postToFacebook(endpoint, fbFormData, 'Page');
@@ -86,14 +123,35 @@ export async function POST(request) {
 
     const results = [{ target: 'Page', id: pageResult.data.id, status: 'Success' }];
 
+    if (IG_USER_ID) {
+      if (scheduledTime) {
+        results.push({ target: 'Instagram', status: 'Skipped: Instagram scheduling is not supported by this endpoint' });
+      } else if (!imageUrl) {
+        results.push({ target: 'Instagram', status: 'Skipped: Instagram requires a public image URL' });
+      } else {
+        const instagramResult = await postToInstagram({
+          igUserId: IG_USER_ID,
+          accessToken: PAGE_TOKEN,
+          caption: message,
+          imageUrl
+        });
+
+        if (!instagramResult.ok) {
+          results.push({ target: 'Instagram', status: `Failed: ${instagramResult.error}` });
+        } else {
+          results.push({ target: 'Instagram', id: instagramResult.data.id, status: 'Success' });
+        }
+      }
+    }
+
     // Crosspost to the Admin Group
     if (!USER_TOKEN || USER_TOKEN === 'your_user_token_here') {
       results.push({ target: 'Admin Group', status: 'Failed: FB_USER_ACCESS_TOKEN missing in .env.local' });
     } else {
       try {
-        const groupEndpoint = image 
-          ? `https://graph.facebook.com/v20.0/${ADMIN_GROUP_ID}/photos`
-          : `https://graph.facebook.com/v20.0/${ADMIN_GROUP_ID}/feed`;
+        const groupEndpoint = image || imageUrl
+          ? graphUrl(`/${ADMIN_GROUP_ID}/photos`)
+          : graphUrl(`/${ADMIN_GROUP_ID}/feed`);
           
         const groupFormData = new FormData();
         if (message) groupFormData.append('message', message);
@@ -106,6 +164,8 @@ export async function POST(request) {
 
         if (image && blob) {
           groupFormData.append('source', blob, fileName);
+        } else if (imageUrl) {
+          groupFormData.append('url', imageUrl);
         }
 
         const groupResult = await postToFacebook(groupEndpoint, groupFormData, 'Admin Group');

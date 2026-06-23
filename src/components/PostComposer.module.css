@@ -188,7 +188,21 @@
   flex: 1;
   resize: none;
   min-height: 150px;
-  padding-bottom: 36px;
+  width: 100%;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  padding: 12px 14px 36px;
+}
+
+.textareaWrapper textarea:focus,
+.urlInput input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(128, 0, 0, 0.12);
 }
 
 .characterCount {
@@ -198,6 +212,27 @@
   font-size: 0.8rem;
   color: var(--text-secondary);
   pointer-events: none;
+}
+
+.urlInput {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.urlInput label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.urlInput input {
+  width: 100%;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 10px 12px;
 }
 
 /* Scheduling Block */
@@ -351,4 +386,21 @@
 @keyframes skeletonLoad {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+@media (max-width: 900px) {
+  .splitGrid {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .controlPane,
+  .previewPane {
+    overflow-y: visible;
+  }
+
+  .scheduleRow,
+  .topControls {
+    flex-direction: column;
+  }
 }

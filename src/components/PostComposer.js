@@ -33,6 +33,7 @@ export default function PostComposer() {
       file,
       preview: URL.createObjectURL(file),
       caption: '',
+      imageUrl: '',
       status: 'pending' // pending, generating, ready, published, error
     }));
 
@@ -122,6 +123,7 @@ export default function PostComposer() {
         const formData = new FormData();
         if (item.caption.trim()) formData.append('message', item.caption);
         if (item.file) formData.append('image', item.file);
+        if (item.imageUrl?.trim()) formData.append('imageUrl', item.imageUrl.trim());
         
         if (baseTime) {
           // Spread interval (hours -> seconds)
@@ -225,7 +227,33 @@ export default function PostComposer() {
           </div>
         )}
 
-
+        {selectedItem && (
+          <div className={styles.activeEditor}>
+            <h3>Edit Post {selectedIndex + 1}</h3>
+            <div className={styles.textareaWrapper}>
+              <textarea
+                value={selectedItem.caption}
+                maxLength={maxLength}
+                onChange={e => updateQueueItem(selectedIndex, { caption: e.target.value, status: 'ready' })}
+                placeholder="Write or generate a caption..."
+                disabled={isSubmitting}
+              />
+              <span className={styles.characterCount}>
+                {selectedItem.caption.length}/{maxLength}
+              </span>
+            </div>
+            <div className={styles.urlInput}>
+              <label>Public image URL for Instagram</label>
+              <input
+                type="url"
+                value={selectedItem.imageUrl}
+                onChange={e => updateQueueItem(selectedIndex, { imageUrl: e.target.value })}
+                placeholder="https://example.com/image.jpg"
+                disabled={isSubmitting}
+              />
+            </div>
+          </div>
+        )}
 
         <div className={styles.schedulingBlock}>
           <h3>Scheduling Options</h3>

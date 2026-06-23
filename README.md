@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SMM Pro Facebook/Instagram Poster
 
-## Getting Started
+Next.js app for generating captions and publishing posts to a Facebook Page, with token refresh helpers for Meta Graph API credentials.
 
-First, run the development server:
+## Local Setup
 
 ```bash
+npm install
+cp .env.example .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## Refresh Meta Tokens
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Meta short-lived user tokens must be exchanged with the matching Meta App ID and App Secret.
 
-## Learn More
+Put these values in `.env.local`:
 
-To learn more about Next.js, take a look at the following resources:
+```env
+NEXT_PUBLIC_FB_PAGE_ID=your_facebook_page_id
+FB_USER_ACCESS_TOKEN=your_short_lived_user_token
+META_APP_ID=your_meta_app_id
+META_APP_SECRET=your_meta_app_secret
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Then run:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run tokens:refresh
+```
 
-## Deploy on Vercel
+The script updates `.env.local` with:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `FB_USER_ACCESS_TOKEN`: long-lived user token
+- `FB_PAGE_ACCESS_TOKEN`: Page token fetched from the long-lived user token
+- `IG_USER_ID`: connected Instagram professional account ID, when Meta returns one
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+You can also pass values without storing the app credentials in `.env.local`:
+
+```bash
+node get-long-lived-tokens.js --app-id YOUR_META_APP_ID --app-secret YOUR_META_APP_SECRET --user-token YOUR_SHORT_LIVED_TOKEN
+```
+
+Useful options:
+
+```bash
+node get-long-lived-tokens.js --help
+node get-long-lived-tokens.js --no-write
+node get-long-lived-tokens.js --skip-instagram
+```
+
+## Instagram Publishing Note
+
+Instagram Content Publishing requires a connected Instagram Business or Creator account and a publicly reachable image URL. Direct multipart file uploads work for Facebook Photos, but not for Instagram publishing.
+
+## Deploy
+
+After refreshing local tokens, add the updated env vars to your hosting provider. For Vercel:
+
+```bash
+npx vercel env add FB_USER_ACCESS_TOKEN production
+npx vercel env add FB_PAGE_ACCESS_TOKEN production
+npx vercel env add IG_USER_ID production
+npx vercel deploy --prod
+```
+
+Never commit `.env.local`; it is intentionally ignored.
