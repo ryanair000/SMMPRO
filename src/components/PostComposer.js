@@ -302,7 +302,7 @@ export default function PostComposer() {
               <div className={styles.fbHeader}>
                 <div className={styles.fbAvatar}></div>
                 <div className={styles.fbMeta}>
-                  <div className={styles.fbName}>PlayMechi</div>
+                  <div className={styles.fbName}>Chezahub</div>
                   <div className={styles.fbTime}>
                     {scheduleTime 
                       ? `Scheduled: ${new Date(new Date(scheduleTime).getTime() + (selectedIndex * spreadInterval * 3600000)).toLocaleString()}` 

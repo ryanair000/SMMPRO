@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { CHEZAHUB_CAPTION_PROMPT } from '@/lib/captionPrompt';
 
 export const maxDuration = 60; // 60s timeout limit to prevent Vercel 504 errors
 
@@ -15,7 +16,7 @@ export async function POST(request) {
 
     const base64Data = imageBase64.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
     const mimeType = imageBase64.match(/^data:(image\/[a-z]+);base64,/)?.[1] || "image/jpeg";
-    const promptText = "Extract any text from this image (OCR). Then, write an engaging World Cup football/soccer update for the Facebook page 'PlayMechi'. Format the caption professionally with a catchy hook, the main update/score/news from the image, and relevant World Cup hashtags (e.g., #WorldCup, #PlayMechi, #Football). Keep it exciting! CRITICAL: DO NOT use any markdown formatting like **asterisks** or bolding. Use plain text only. Only return the caption text without any extra conversation.";
+    const promptText = CHEZAHUB_CAPTION_PROMPT;
 
     let caption = null;
     let lastError = null;
@@ -65,7 +66,7 @@ export async function POST(request) {
             'Authorization': `Bearer ${OR_KEY}`,
             'Content-Type': 'application/json',
             'HTTP-Referer': 'http://localhost:3000',
-            'X-Title': 'Facebook AutoPoster',
+            'X-Title': 'Chezahub AutoPoster',
           },
           body: JSON.stringify({
             model: 'google/gemini-flash-1.5',

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { CHEZAHUB_CAPTION_PROMPT } from '@/lib/captionPrompt';
 
 export const maxDuration = 60;
 
@@ -29,12 +30,12 @@ export async function POST(request) {
     
     if (!update.message || !update.message.photo) {
       if (update.message?.text) {
-        await sendMessage(chatId, "👋 Welcome to AutoPoster! Send me an image, and I will auto-caption and post it to Facebook using OpenAI.");
+        await sendMessage(chatId, "Welcome to Chezahub AutoPoster. Send me a gaming image, and I will generate a caption and post it.");
       }
       return NextResponse.json({ ok: true });
     }
 
-    await sendMessage(chatId, "⏳ Image received! Generating AI caption...");
+    await sendMessage(chatId, "Image received. Generating Chezahub caption...");
 
     const photos = update.message.photo;
     const bestPhoto = photos[photos.length - 1]; 
@@ -51,7 +52,7 @@ export async function POST(request) {
     const base64Data = imageBuffer.toString('base64');
     const mimeType = 'image/jpeg';
     
-    const promptText = "Extract any text from this image (OCR). Then, write an engaging World Cup football/soccer update for the Facebook page 'PlayMechi'. Format the caption professionally with a catchy hook, the main update/score/news from the image, and relevant World Cup hashtags (e.g., #WorldCup, #PlayMechi, #Football). Keep it exciting! CRITICAL: DO NOT use any markdown formatting like **asterisks** or bolding. Use plain text only. Only return the caption text without any extra conversation.";
+    const promptText = CHEZAHUB_CAPTION_PROMPT;
 
     let caption = null;
 
@@ -84,7 +85,7 @@ export async function POST(request) {
 
     if (!caption) throw new Error("Failed to generate caption with available APIs.");
 
-    await sendMessage(chatId, `✨ Caption generated:\n\n${caption}\n\n🚀 Publishing to Facebook...`);
+    await sendMessage(chatId, `Caption generated:\n\n${caption}\n\nPublishing...`);
 
     const blob = new Blob([imageBuffer], { type: mimeType });
     const fileName = 'telegram_photo.jpg';
@@ -109,11 +110,11 @@ export async function POST(request) {
     const groupRes = await fetch(`https://graph.facebook.com/v20.0/${ADMIN_GROUP_ID}/photos`, { method: 'POST', body: groupFormData });
     const groupData = await groupRes.json();
 
-    let finalMsg = `✅ Successfully posted to PlayMechi Page! (ID: ${pageData.id})`;
+    let finalMsg = `Successfully posted to Chezahub Page. (ID: ${pageData.id})`;
     if (groupData.error) {
-      finalMsg += `\n⚠️ But failed to post to Admin Group: ${groupData.error.message}`;
+      finalMsg += `\nFailed to post to Admin Group: ${groupData.error.message}`;
     } else {
-      finalMsg += `\n✅ Successfully crossposted to Admin Group!`;
+      finalMsg += `\nSuccessfully crossposted to Admin Group.`;
     }
 
     await sendMessage(chatId, finalMsg);
@@ -122,7 +123,7 @@ export async function POST(request) {
   } catch (error) {
     console.error(error);
     if (chatId) {
-       await sendMessage(chatId, `❌ Error: ${error.message}`);
+       await sendMessage(chatId, `Error: ${error.message}`);
     }
     return NextResponse.json({ ok: true }); 
   }

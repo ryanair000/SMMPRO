@@ -22,7 +22,7 @@ export default function LoginPage() {
       });
       
       if (res.ok) {
-        toast.success('Welcome to AutoPoster!');
+        toast.success('Welcome to Chezahub AutoPoster!');
         router.push('/');
         router.refresh();
       } else {
@@ -47,7 +47,7 @@ export default function LoginPage() {
     }}>
       <div className="glass-panel" style={{ width: '100%', maxWidth: '400px', padding: '40px 30px' }}>
         <h1 style={{ textAlign: 'center', marginBottom: '10px', fontSize: '1.8rem', color: 'var(--text-primary)' }}>
-          PlayMechi AutoPoster
+          Chezahub AutoPoster
         </h1>
         <p style={{ textAlign: 'center', color: 'var(--text-secondary)', marginBottom: '30px' }}>
           Secure Access Portal
