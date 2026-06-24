@@ -41,6 +41,26 @@ async function postToFacebook(endpoint, formData, target) {
   return { ok: true, data };
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function getInstagramContainerStatus(creationId, accessToken) {
+  const url = new URL(graphUrl(`/${creationId}`));
+  url.searchParams.set('fields', 'status_code,status');
+  url.searchParams.set('access_token', accessToken);
+
+  const response = await fetch(url);
+  const data = await readFacebookResponse(response);
+
+  if (!response.ok || data.error) {
+    const message = data.error?.message || 'Instagram container status request failed';
+    return { ok: false, error: `Instagram Error: ${message}`, details: { status: response.status } };
+  }
+
+  return { ok: true, data };
+}
+
 async function postToInstagram({ igUserId, accessToken, caption, imageUrl }) {
   const createFormData = new FormData();
   createFormData.append('image_url', imageUrl);
@@ -58,6 +78,38 @@ async function postToInstagram({ igUserId, accessToken, caption, imageUrl }) {
   }
 
   const creationId = createResult.data.id;
+  let isFinished = false;
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const statusResult = await getInstagramContainerStatus(creationId, accessToken);
+    if (!statusResult.ok) {
+      return statusResult;
+    }
+
+    const statusCode = statusResult.data.status_code;
+    if (statusCode === 'FINISHED') {
+      isFinished = true;
+      break;
+    }
+
+    if (statusCode === 'ERROR' || statusCode === 'EXPIRED') {
+      return {
+        ok: false,
+        error: `Instagram Error: media container ${statusCode.toLowerCase()}`,
+        details: statusResult.data
+      };
+    }
+
+    await sleep(2500);
+  }
+
+  if (!isFinished) {
+    return {
+      ok: false,
+      error: 'Instagram Error: media container was not ready before timeout',
+      details: { creationId }
+    };
+  }
+
   const publishFormData = new FormData();
   publishFormData.append('creation_id', creationId);
   publishFormData.append('access_token', accessToken);
@@ -76,6 +128,8 @@ export async function POST(request) {
     const image = formData.get('image'); // This is a File object if present
     const imageUrl = formData.get('imageUrl')?.toString().trim() || '';
     const scheduledTime = formData.get('scheduledPublishTime'); // Unix timestamp (optional)
+    const publishFacebook = formData.get('publishFacebook') !== 'false';
+    const publishInstagram = formData.get('publishInstagram') !== 'false';
 
     const PAGE_ID = process.env.NEXT_PUBLIC_FB_PAGE_ID?.trim();
     const PAGE_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN?.trim();
@@ -91,19 +145,12 @@ export async function POST(request) {
       return jsonError('Add a caption or image before publishing.', 400);
     }
 
-    const endpoint = image || imageUrl
-      ? graphUrl(`/${PAGE_ID}/photos`)
-      : graphUrl(`/${PAGE_ID}/feed`);
-
-    const fbFormData = new FormData();
-    if (message) fbFormData.append('message', message);
-    fbFormData.append('access_token', PAGE_TOKEN);
-
-    if (scheduledTime) {
-      fbFormData.append('published', 'false');
-      fbFormData.append('scheduled_publish_time', scheduledTime);
+    if (!publishFacebook && !publishInstagram) {
+      return jsonError('Choose at least one publishing target.', 400);
     }
-    
+
+    const results = [];
+
     let blob = null;
     let fileName = 'image.jpg';
     if (image) {
@@ -111,19 +158,37 @@ export async function POST(request) {
       const buffer = Buffer.from(arrayBuffer);
       blob = new Blob([buffer], { type: image.type });
       fileName = image.name || 'image.jpg';
-      fbFormData.append('source', blob, fileName);
-    } else if (imageUrl) {
-      fbFormData.append('url', imageUrl);
     }
 
-    const pageResult = await postToFacebook(endpoint, fbFormData, 'Page');
-    if (!pageResult.ok) {
-      return jsonError(pageResult.error, 502, pageResult.details);
+    if (publishFacebook) {
+      const endpoint = image || imageUrl
+        ? graphUrl(`/${PAGE_ID}/photos`)
+        : graphUrl(`/${PAGE_ID}/feed`);
+
+      const fbFormData = new FormData();
+      if (message) fbFormData.append('message', message);
+      fbFormData.append('access_token', PAGE_TOKEN);
+
+      if (scheduledTime) {
+        fbFormData.append('published', 'false');
+        fbFormData.append('scheduled_publish_time', scheduledTime);
+      }
+
+      if (image && blob) {
+        fbFormData.append('source', blob, fileName);
+      } else if (imageUrl) {
+        fbFormData.append('url', imageUrl);
+      }
+
+      const pageResult = await postToFacebook(endpoint, fbFormData, 'Page');
+      if (!pageResult.ok) {
+        return jsonError(pageResult.error, 502, pageResult.details);
+      }
+
+      results.push({ target: 'Page', id: pageResult.data.id, status: 'Success' });
     }
 
-    const results = [{ target: 'Page', id: pageResult.data.id, status: 'Success' }];
-
-    if (IG_USER_ID) {
+    if (publishInstagram && IG_USER_ID) {
       if (scheduledTime) {
         results.push({ target: 'Instagram', status: 'Skipped: Instagram scheduling is not supported by this endpoint' });
       } else if (!imageUrl) {
@@ -142,10 +207,14 @@ export async function POST(request) {
           results.push({ target: 'Instagram', id: instagramResult.data.id, status: 'Success' });
         }
       }
+    } else if (publishInstagram) {
+      results.push({ target: 'Instagram', status: 'Skipped: IG_USER_ID is not configured' });
     }
 
     // Optional crosspost to a configured Facebook Group.
-    if (!ADMIN_GROUP_ID) {
+    if (!publishFacebook) {
+      results.push({ target: 'Admin Group', status: 'Skipped: Facebook publishing disabled for this request' });
+    } else if (!ADMIN_GROUP_ID) {
       results.push({ target: 'Admin Group', status: 'Skipped: FB_ADMIN_GROUP_ID is not configured' });
     } else if (!USER_TOKEN || USER_TOKEN === 'your_user_token_here') {
       results.push({ target: 'Admin Group', status: 'Failed: FB_USER_ACCESS_TOKEN missing in .env.local' });
