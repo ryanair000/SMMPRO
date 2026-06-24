@@ -9,7 +9,7 @@ const OPENAI_KEY = process.env.OPENAI_API_KEY?.trim();
 const FB_PAGE_ID = process.env.NEXT_PUBLIC_FB_PAGE_ID?.trim();
 const FB_PAGE_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN?.trim();
 const FB_USER_TOKEN = process.env.FB_USER_ACCESS_TOKEN?.trim();
-const ADMIN_GROUP_ID = '1497786931895263';
+const ADMIN_GROUP_ID = process.env.FB_ADMIN_GROUP_ID?.trim();
 
 async function sendMessage(chatId, text) {
   if (!chatId) return;
@@ -85,20 +85,22 @@ export async function POST(request) {
 
     if (pageData.error) throw new Error(`Page Error: ${pageData.error.message}`);
 
-    // Post to Group
-    const groupFormData = new FormData();
-    groupFormData.append('message', caption);
-    groupFormData.append('access_token', FB_USER_TOKEN);
-    groupFormData.append('source', blob, fileName);
-
-    const groupRes = await fetch(`https://graph.facebook.com/v20.0/${ADMIN_GROUP_ID}/photos`, { method: 'POST', body: groupFormData });
-    const groupData = await groupRes.json();
-
     let finalMsg = `Successfully posted to Chezahub Page. (ID: ${pageData.id})`;
-    if (groupData.error) {
-      finalMsg += `\nFailed to post to Admin Group: ${groupData.error.message}`;
-    } else {
-      finalMsg += `\nSuccessfully crossposted to Admin Group.`;
+
+    if (ADMIN_GROUP_ID && FB_USER_TOKEN) {
+      const groupFormData = new FormData();
+      groupFormData.append('message', caption);
+      groupFormData.append('access_token', FB_USER_TOKEN);
+      groupFormData.append('source', blob, fileName);
+
+      const groupRes = await fetch(`https://graph.facebook.com/v20.0/${ADMIN_GROUP_ID}/photos`, { method: 'POST', body: groupFormData });
+      const groupData = await groupRes.json();
+
+      if (groupData.error) {
+        finalMsg += `\nFailed to post to Admin Group: ${groupData.error.message}`;
+      } else {
+        finalMsg += `\nSuccessfully crossposted to Admin Group.`;
+      }
     }
 
     await sendMessage(chatId, finalMsg);

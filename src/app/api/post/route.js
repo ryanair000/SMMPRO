@@ -81,7 +81,7 @@ export async function POST(request) {
     const PAGE_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN?.trim();
     const USER_TOKEN = process.env.FB_USER_ACCESS_TOKEN?.trim();
     const IG_USER_ID = process.env.IG_USER_ID?.trim();
-    const ADMIN_GROUP_ID = '1497786931895263';
+    const ADMIN_GROUP_ID = process.env.FB_ADMIN_GROUP_ID?.trim();
 
     if (!PAGE_ID || !PAGE_TOKEN || PAGE_ID === 'your_page_id_here') {
       return jsonError('Facebook page credentials are not configured in .env.local', 500);
@@ -144,8 +144,10 @@ export async function POST(request) {
       }
     }
 
-    // Crosspost to the Admin Group
-    if (!USER_TOKEN || USER_TOKEN === 'your_user_token_here') {
+    // Optional crosspost to a configured Facebook Group.
+    if (!ADMIN_GROUP_ID) {
+      results.push({ target: 'Admin Group', status: 'Skipped: FB_ADMIN_GROUP_ID is not configured' });
+    } else if (!USER_TOKEN || USER_TOKEN === 'your_user_token_here') {
       results.push({ target: 'Admin Group', status: 'Failed: FB_USER_ACCESS_TOKEN missing in .env.local' });
     } else {
       try {
