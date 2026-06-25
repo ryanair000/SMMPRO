@@ -167,6 +167,11 @@ export default function PostComposer() {
 
     setIsSubmitting(false);
     toast.success(`Successfully processed ${successCount} posts!`, { id: toastId });
+
+    // Clear the queue so the composer is ready for the next batch
+    setQueue([]);
+    setSelectedIndex(0);
+    setScheduleTime('');
   };
 
   const removeItem = (index) => {
