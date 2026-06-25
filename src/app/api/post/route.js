@@ -149,11 +149,10 @@ export async function POST(request) {
     }
 
     const results = [];
-
-    // We don't need to convert the File to a Blob/Buffer, we can use it directly.
+    let effectiveImageUrl = imageUrl; // may be updated after FB post
 
     if (publishFacebook) {
-      const endpoint = image || imageUrl
+      const endpoint = image || effectiveImageUrl
         ? graphUrl(`/${PAGE_ID}/photos`)
         : graphUrl(`/${PAGE_ID}/feed`);
 
@@ -168,8 +167,8 @@ export async function POST(request) {
 
       if (image) {
         fbFormData.append('source', image);
-      } else if (imageUrl) {
-        fbFormData.append('url', imageUrl);
+      } else if (effectiveImageUrl) {
+        fbFormData.append('url', effectiveImageUrl);
       }
 
       const pageResult = await postToFacebook(endpoint, fbFormData, 'Page');
@@ -178,13 +177,32 @@ export async function POST(request) {
       }
 
       results.push({ target: 'Page', id: pageResult.data.id, status: 'Success' });
+
+      // If a file was uploaded with no manual imageUrl, auto-fetch the public CDN URL
+      // from Facebook so we can reuse it for Instagram — no manual URL input needed.
+      if (image && !effectiveImageUrl && pageResult.data.id && publishInstagram && IG_USER_ID && !scheduledTime) {
+        try {
+          const photoId = pageResult.data.id;
+          const photoRes = await fetch(
+            `${graphUrl(`/${photoId}`)}?fields=images&access_token=${PAGE_TOKEN}`
+          );
+          const photoData = await photoRes.json();
+          // images is sorted largest-first; pick the first (highest resolution)
+          const cdnUrl = photoData?.images?.[0]?.source;
+          if (cdnUrl) {
+            effectiveImageUrl = cdnUrl;
+          }
+        } catch {
+          // If we can't get the CDN URL, Instagram will be silently skipped below
+        }
+      }
     }
 
     if (publishInstagram && IG_USER_ID) {
       if (scheduledTime) {
-        // Silent skip — Instagram scheduling not supported, don't surface as error
-      } else if (!imageUrl) {
-        // Silent skip — file uploads require a public URL for Instagram; FB already posted
+        // Silent skip — Instagram scheduling not supported
+      } else if (!effectiveImageUrl) {
+        // Silent skip — no image URL available (text-only post or CDN fetch failed)
       } else if (!USER_TOKEN) {
         results.push({ target: 'Instagram', status: 'Failed: FB_USER_ACCESS_TOKEN is missing — required for Instagram posting' });
       } else {
@@ -193,7 +211,7 @@ export async function POST(request) {
           igUserId: IG_USER_ID,
           accessToken: USER_TOKEN,
           caption: message,
-          imageUrl
+          imageUrl: effectiveImageUrl
         });
 
         if (!instagramResult.ok) {
@@ -203,8 +221,6 @@ export async function POST(request) {
         }
       }
     }
-
-
 
     return NextResponse.json({ success: true, results });
   } catch (error) {
