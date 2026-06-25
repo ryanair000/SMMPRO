@@ -182,9 +182,9 @@ export async function POST(request) {
 
     if (publishInstagram && IG_USER_ID) {
       if (scheduledTime) {
-        results.push({ target: 'Instagram', status: 'Skipped: Instagram scheduling is not supported by this endpoint' });
+        // Silent skip — Instagram scheduling not supported, don't surface as error
       } else if (!imageUrl) {
-        results.push({ target: 'Instagram', status: 'Skipped: Instagram requires a public image URL' });
+        // Silent skip — file uploads require a public URL for Instagram; FB already posted
       } else {
         const instagramResult = await postToInstagram({
           igUserId: IG_USER_ID,
@@ -199,8 +199,6 @@ export async function POST(request) {
           results.push({ target: 'Instagram', id: instagramResult.data.id, status: 'Success' });
         }
       }
-    } else if (publishInstagram) {
-      results.push({ target: 'Instagram', status: 'Skipped: IG_USER_ID is not configured' });
     }
 
 
