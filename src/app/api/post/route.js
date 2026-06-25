@@ -185,10 +185,13 @@ export async function POST(request) {
         // Silent skip — Instagram scheduling not supported, don't surface as error
       } else if (!imageUrl) {
         // Silent skip — file uploads require a public URL for Instagram; FB already posted
+      } else if (!USER_TOKEN) {
+        results.push({ target: 'Instagram', status: 'Failed: FB_USER_ACCESS_TOKEN is missing — required for Instagram posting' });
       } else {
+        // Instagram Graph API requires the USER access token, not the PAGE token
         const instagramResult = await postToInstagram({
           igUserId: IG_USER_ID,
-          accessToken: PAGE_TOKEN,
+          accessToken: USER_TOKEN,
           caption: message,
           imageUrl
         });
