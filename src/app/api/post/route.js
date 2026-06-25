@@ -135,7 +135,6 @@ export async function POST(request) {
     const PAGE_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN?.trim();
     const USER_TOKEN = process.env.FB_USER_ACCESS_TOKEN?.trim();
     const IG_USER_ID = process.env.IG_USER_ID?.trim();
-    const ADMIN_GROUP_ID = process.env.FB_ADMIN_GROUP_ID?.trim();
 
     if (!PAGE_ID || !PAGE_TOKEN || PAGE_ID === 'your_page_id_here') {
       return jsonError('Facebook page credentials are not configured in .env.local', 500);
@@ -151,14 +150,7 @@ export async function POST(request) {
 
     const results = [];
 
-    let blob = null;
-    let fileName = 'image.jpg';
-    if (image) {
-      const arrayBuffer = await image.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      blob = new Blob([buffer], { type: image.type });
-      fileName = image.name || 'image.jpg';
-    }
+    // We don't need to convert the File to a Blob/Buffer, we can use it directly.
 
     if (publishFacebook) {
       const endpoint = image || imageUrl
@@ -174,8 +166,8 @@ export async function POST(request) {
         fbFormData.append('scheduled_publish_time', scheduledTime);
       }
 
-      if (image && blob) {
-        fbFormData.append('source', blob, fileName);
+      if (image) {
+        fbFormData.append('source', image);
       } else if (imageUrl) {
         fbFormData.append('url', imageUrl);
       }
@@ -211,44 +203,7 @@ export async function POST(request) {
       results.push({ target: 'Instagram', status: 'Skipped: IG_USER_ID is not configured' });
     }
 
-    // Optional crosspost to a configured Facebook Group.
-    if (!publishFacebook) {
-      results.push({ target: 'Admin Group', status: 'Skipped: Facebook publishing disabled for this request' });
-    } else if (!ADMIN_GROUP_ID) {
-      results.push({ target: 'Admin Group', status: 'Skipped: FB_ADMIN_GROUP_ID is not configured' });
-    } else if (!USER_TOKEN || USER_TOKEN === 'your_user_token_here') {
-      results.push({ target: 'Admin Group', status: 'Failed: FB_USER_ACCESS_TOKEN missing in .env.local' });
-    } else {
-      try {
-        const groupEndpoint = image || imageUrl
-          ? graphUrl(`/${ADMIN_GROUP_ID}/photos`)
-          : graphUrl(`/${ADMIN_GROUP_ID}/feed`);
-          
-        const groupFormData = new FormData();
-        if (message) groupFormData.append('message', message);
-        groupFormData.append('access_token', USER_TOKEN);
-        
-        if (scheduledTime) {
-          groupFormData.append('published', 'false');
-          groupFormData.append('scheduled_publish_time', scheduledTime);
-        }
 
-        if (image && blob) {
-          groupFormData.append('source', blob, fileName);
-        } else if (imageUrl) {
-          groupFormData.append('url', imageUrl);
-        }
-
-        const groupResult = await postToFacebook(groupEndpoint, groupFormData, 'Admin Group');
-        if (!groupResult.ok) {
-          results.push({ target: 'Admin Group', status: `Failed: ${groupResult.error}` });
-        } else {
-          results.push({ target: 'Admin Group', id: groupResult.data.id, status: 'Success' });
-        }
-      } catch (e) {
-        results.push({ target: 'Admin Group', status: `Error: ${e.message}` });
-      }
-    }
 
     return NextResponse.json({ success: true, results });
   } catch (error) {
