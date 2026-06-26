@@ -201,10 +201,14 @@ export async function POST(request) {
       }
     }
 
-    if (publishInstagram && IG_USER_ID) {
-      if (scheduledTime) {
+    if (publishInstagram) {
+      if (!IG_USER_ID) {
+        results.push({ target: `${account.name} Instagram`, status: `Failed: ${account.env.igUserId} is missing` });
+      } else if (scheduledTime) {
+        results.push({ target: `${account.name} Instagram`, status: 'Skipped: Instagram scheduling is not supported yet. Post now to publish on Instagram.' });
         // Silent skip — Instagram scheduling not supported
       } else if (!effectiveImageUrl) {
+        results.push({ target: `${account.name} Instagram`, status: 'Failed: Instagram needs a public image URL. Add one in the Instagram URL field, or post to Facebook first and try again.' });
         // Silent skip — no image URL available (text-only post or CDN fetch failed)
       } else if (!USER_TOKEN) {
         results.push({ target: `${account.name} Instagram`, status: `Failed: ${account.env.userToken} is missing - required for Instagram posting` });
