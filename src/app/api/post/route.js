@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getAccountCredentials } from '@/lib/socialAccounts';
 
 function jsonError(message, status, details = null) {
   return NextResponse.json({ error: message, details }, { status });
@@ -130,14 +131,16 @@ export async function POST(request) {
     const scheduledTime = formData.get('scheduledPublishTime'); // Unix timestamp (optional)
     const publishFacebook = formData.get('publishFacebook') !== 'false';
     const publishInstagram = formData.get('publishInstagram') !== 'false';
+    const accountId = formData.get('accountId')?.toString() || 'chezahub';
 
-    const PAGE_ID = process.env.NEXT_PUBLIC_FB_PAGE_ID?.trim();
-    const PAGE_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN?.trim();
-    const USER_TOKEN = process.env.FB_USER_ACCESS_TOKEN?.trim();
-    const IG_USER_ID = process.env.IG_USER_ID?.trim();
+    const { account, credentials } = getAccountCredentials(accountId);
+    const PAGE_ID = credentials.pageId;
+    const PAGE_TOKEN = credentials.pageToken;
+    const USER_TOKEN = credentials.userToken;
+    const IG_USER_ID = credentials.igUserId;
 
     if (!PAGE_ID || !PAGE_TOKEN || PAGE_ID === 'your_page_id_here') {
-      return jsonError('Facebook page credentials are not configured in .env.local', 500);
+      return jsonError(`${account.name} Facebook page credentials are not configured in .env.local`, 500);
     }
 
     if (!message.trim() && !image && !imageUrl) {
@@ -176,7 +179,7 @@ export async function POST(request) {
         return jsonError(pageResult.error, 502, pageResult.details);
       }
 
-      results.push({ target: 'Page', id: pageResult.data.id, status: 'Success' });
+      results.push({ target: `${account.name} Facebook`, id: pageResult.data.id, status: 'Success' });
 
       // If a file was uploaded with no manual imageUrl, auto-fetch the public CDN URL
       // from Facebook so we can reuse it for Instagram — no manual URL input needed.
@@ -204,7 +207,7 @@ export async function POST(request) {
       } else if (!effectiveImageUrl) {
         // Silent skip — no image URL available (text-only post or CDN fetch failed)
       } else if (!USER_TOKEN) {
-        results.push({ target: 'Instagram', status: 'Failed: FB_USER_ACCESS_TOKEN is missing — required for Instagram posting' });
+        results.push({ target: `${account.name} Instagram`, status: `Failed: ${account.env.userToken} is missing - required for Instagram posting` });
       } else {
         // Instagram Graph API requires the USER access token, not the PAGE token
         const instagramResult = await postToInstagram({
@@ -215,14 +218,14 @@ export async function POST(request) {
         });
 
         if (!instagramResult.ok) {
-          results.push({ target: 'Instagram', status: `Failed: ${instagramResult.error}` });
+          results.push({ target: `${account.name} Instagram`, status: `Failed: ${instagramResult.error}` });
         } else {
-          results.push({ target: 'Instagram', id: instagramResult.data.id, status: 'Success' });
+          results.push({ target: `${account.name} Instagram`, id: instagramResult.data.id, status: 'Success' });
         }
       }
     }
 
-    return NextResponse.json({ success: true, results });
+    return NextResponse.json({ success: true, account: account.id, results });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

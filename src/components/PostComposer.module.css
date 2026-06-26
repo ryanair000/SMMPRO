@@ -19,8 +19,125 @@
 .paneTitle {
   font-size: 1.1rem;
   font-weight: 600;
-  margin-bottom: 20px;
   color: var(--text-secondary);
+}
+
+.accountHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.accountHint {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+.accountBadge,
+.accountAvatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--account-accent);
+  color: #fff;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.accountBadge {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.accountSwitcher {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.accountCard {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+
+.accountCard:hover:not(:disabled) {
+  border-color: var(--account-accent);
+  transform: translateY(-1px);
+}
+
+.accountCard:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.accountCardActive {
+  border-color: var(--account-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--account-accent) 18%, transparent);
+}
+
+.accountAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+}
+
+.accountCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.accountCopy strong {
+  font-size: 0.92rem;
+}
+
+.accountCopy small {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.platformToggles {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.platformToggles label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.86rem;
+  font-weight: 600;
+  padding: 10px 12px;
+}
+
+.platformToggles input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary-color);
 }
 
 .topControls {
@@ -300,6 +417,15 @@
   border: 1px solid var(--surface-border);
 }
 
+.previewTargets {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  margin: -10px 0 14px;
+}
+
 .fbMockup {
   width: 100%;
   max-width: 500px;
@@ -321,6 +447,12 @@
   height: 40px;
   border-radius: 50%;
   background: var(--primary-color);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .fbMeta {
@@ -400,7 +532,13 @@
   }
 
   .scheduleRow,
-  .topControls {
+  .topControls,
+  .accountSwitcher,
+  .platformToggles {
     flex-direction: column;
+  }
+
+  .accountSwitcher {
+    grid-template-columns: 1fr;
   }
 }

@@ -28,7 +28,7 @@ export async function POST(request) {
     
     if (!update.message || !update.message.photo) {
       if (update.message?.text) {
-        await sendMessage(chatId, "Welcome to Chezahub AutoPoster. Send me a gaming image, and I will generate a caption and post it.");
+        await sendMessage(chatId, "Welcome to SMM Pro. Send me a gaming image, and I will generate a ChezaHub caption and post it.");
       }
       return NextResponse.json({ ok: true });
     }

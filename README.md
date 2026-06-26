@@ -1,6 +1,6 @@
 # SMM Pro Facebook/Instagram Poster
 
-Next.js app for generating captions and publishing posts to a Facebook Page, with token refresh helpers for Meta Graph API credentials.
+Next.js app for generating captions and publishing posts to Facebook Pages and Instagram accounts. It includes managed account switching for ChezaHub and JengaSites.
 
 ## Local Setup
 
@@ -19,11 +19,21 @@ Meta short-lived user tokens must be exchanged with the matching Meta App ID and
 Put these values in `.env.local`:
 
 ```env
-NEXT_PUBLIC_FB_PAGE_ID=your_facebook_page_id
-FB_USER_ACCESS_TOKEN=your_short_lived_user_token
+CHEZAHUB_FB_PAGE_ID=your_chezahub_facebook_page_id
+CHEZAHUB_FB_PAGE_ACCESS_TOKEN=your_chezahub_page_access_token
+CHEZAHUB_FB_USER_ACCESS_TOKEN=your_chezahub_user_access_token
+CHEZAHUB_IG_USER_ID=your_chezahub_instagram_business_or_creator_account_id
+
+JENGASITES_FB_PAGE_ID=your_jengasites_facebook_page_id
+JENGASITES_FB_PAGE_ACCESS_TOKEN=your_jengasites_page_access_token
+JENGASITES_FB_USER_ACCESS_TOKEN=your_jengasites_user_access_token
+JENGASITES_IG_USER_ID=your_jengasites_instagram_business_or_creator_account_id
+
 META_APP_ID=your_meta_app_id
 META_APP_SECRET=your_meta_app_secret
 ```
+
+The legacy `NEXT_PUBLIC_FB_PAGE_ID`, `FB_PAGE_ACCESS_TOKEN`, `FB_USER_ACCESS_TOKEN`, and `IG_USER_ID` names still work as ChezaHub fallbacks.
 
 Then run:
 

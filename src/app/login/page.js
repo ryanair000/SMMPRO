@@ -22,7 +22,7 @@ export default function LoginPage() {
       });
       
       if (res.ok) {
-        toast.success('Welcome to Chezahub AutoPoster!');
+        toast.success('Welcome to SMM Pro!');
         router.push('/');
         router.refresh();
       } else {
@@ -42,12 +42,12 @@ export default function LoginPage() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
+      background: 'linear-gradient(135deg, #0f766e 0%, #9f1239 100%)',
       padding: '20px'
     }}>
       <div className="glass-panel" style={{ width: '100%', maxWidth: '400px', padding: '40px 30px' }}>
         <h1 style={{ textAlign: 'center', marginBottom: '10px', fontSize: '1.8rem', color: 'var(--text-primary)' }}>
-          Chezahub AutoPoster
+          SMM Pro
         </h1>
         <p style={{ textAlign: 'center', color: 'var(--text-secondary)', marginBottom: '30px' }}>
           Secure Access Portal

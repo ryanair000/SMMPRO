@@ -1,11 +1,21 @@
 import { NextResponse } from 'next/server';
-import { CHEZAHUB_CAPTION_PROMPT } from '@/lib/captionPrompt';
+import { getCaptionPrompt } from '@/lib/captionPrompt';
 
 export const maxDuration = 60; // 60s timeout limit to prevent Vercel 504 errors
 
+function normalizeCaption(caption) {
+  return caption
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map(line => line.trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export async function POST(request) {
   try {
-    const { imageBase64 } = await request.json();
+    const { imageBase64, accountId } = await request.json();
     const OPENAI_KEY = process.env.OPENAI_API_KEY?.trim();
 
     if (!imageBase64) {
@@ -18,7 +28,7 @@ export async function POST(request) {
 
     const base64Data = imageBase64.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
     const mimeType = imageBase64.match(/^data:(image\/[a-z]+);base64,/)?.[1] || "image/jpeg";
-    const promptText = CHEZAHUB_CAPTION_PROMPT;
+    const promptText = getCaptionPrompt(accountId);
 
     const oaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -29,6 +39,10 @@ export async function POST(request) {
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [
+          {
+            role: 'system',
+            content: 'You write polished Facebook and Instagram captions. Preserve the requested line breaks exactly. Never return a single paragraph when a structured caption is requested.'
+          },
           {
             role: 'user',
             content: [
@@ -41,7 +55,7 @@ export async function POST(request) {
     });
 
     const oaiData = await oaiRes.json();
-    const caption = oaiData.choices?.[0]?.message?.content?.trim();
+    const caption = normalizeCaption(oaiData.choices?.[0]?.message?.content || '');
 
     if (!caption) {
        throw new Error(oaiData.error?.message || 'OpenAI failed to generate a caption.');

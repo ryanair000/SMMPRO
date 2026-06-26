@@ -4,8 +4,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "Chezahub AutoPoster",
-  description: "Generate gaming captions and publish Chezahub posts.",
+  title: "SMM Pro",
+  description: "Manage ChezaHub and JengaSites social publishing.",
 };
 
 export default function RootLayout({ children }) {

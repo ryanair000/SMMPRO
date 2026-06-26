@@ -3,8 +3,8 @@ import PostComposer from '@/components/PostComposer';
 import styles from './page.module.css';
 
 export const metadata = {
-  title: 'Chezahub AutoPoster',
-  description: 'Generate Chezahub gaming captions and publish to connected social pages.',
+  title: 'SMM Pro',
+  description: 'Manage ChezaHub and JengaSites Facebook and Instagram publishing.',
 };
 
 export default function Home() {
@@ -13,8 +13,8 @@ export default function Home() {
       <Toaster position="top-center" />
       <header className={styles.header}>
         <div className={styles.logoMark}></div>
-        <h1 className={styles.title}>Chezahub AutoPoster</h1>
-        <p className={styles.subtitle}>Generate gaming captions and publish to your social pages</p>
+        <h1 className={styles.title}>SMM Pro</h1>
+        <p className={styles.subtitle}>Manage ChezaHub and JengaSites Facebook and Instagram pages</p>
       </header>
       
       <section className={styles.dashboard}>
