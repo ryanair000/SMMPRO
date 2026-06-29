@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { SOCIAL_ACCOUNTS } from '@/lib/socialAccounts';
 import styles from './PostComposer.module.css';
@@ -13,24 +13,46 @@ export default function PostComposer() {
   const [publishInstagram, setPublishInstagram] = useState(true);
   const [scheduleTime, setScheduleTime] = useState('');
   const [spreadInterval, setSpreadInterval] = useState(2);
+  const [recurrenceFrequency, setRecurrenceFrequency] = useState('none');
+  const [recurrenceCount, setRecurrenceCount] = useState(7);
+  const [lastRunSummary, setLastRunSummary] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fileInputRef = useRef(null);
+  const queueRef = useRef([]);
   const maxLength = 2200;
   const selectedAccount = SOCIAL_ACCOUNTS.find(account => account.id === selectedAccountId) || SOCIAL_ACCOUNTS[0];
   const selectedItem = queue[selectedIndex];
+  const hasTargets = publishFacebook || publishInstagram;
+  const validImageUrl = !selectedItem?.imageUrl?.trim() || /^https?:\/\/\S+$/i.test(selectedItem.imageUrl.trim());
+  const scheduleDate = scheduleTime ? new Date(scheduleTime) : null;
+  const scheduleIsTooSoon = scheduleDate && Number.isFinite(scheduleDate.getTime()) && scheduleDate.getTime() < Date.now() + 600000;
+  const recurrenceEnabled = recurrenceFrequency !== 'none';
+  const normalizedRecurrenceCount = Math.min(60, Math.max(1, Number.parseInt(recurrenceCount, 10) || 1));
+  const needsScheduleForRecurrence = recurrenceEnabled && !scheduleTime;
+  const recurrenceIntervalSeconds = recurrenceFrequency === 'weekly' ? 7 * 24 * 60 * 60 : 24 * 60 * 60;
+  const totalScheduledJobs = queue.length * (recurrenceEnabled ? normalizedRecurrenceCount : 1);
+  const canSubmit = queue.length > 0 && hasTargets && validImageUrl && !scheduleIsTooSoon && !needsScheduleForRecurrence && !isSubmitting && !isGenerating;
+  const publishLabel = queue.length === 0
+    ? 'Add Photos to Continue'
+    : scheduleTime || recurrenceEnabled
+      ? `${recurrenceEnabled ? 'Schedule Recurring' : 'Schedule'} ${totalScheduledJobs} ${selectedAccount.name} Posts`
+      : `Publish ${queue.length} ${selectedAccount.name} Posts Now`;
 
-  const handleFilesChange = (event) => {
-    const files = Array.from(event.target.files);
-    if (!files.length) return;
+  const addFilesToQueue = useCallback((files, sourceLabel = 'Added') => {
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    if (!imageFiles.length) {
+      toast.error('No image was found.');
+      return;
+    }
 
-    if (queue.length + files.length > 20) {
+    if (queue.length + imageFiles.length > 20) {
       toast.error('You can only upload up to 20 images at once.');
       return;
     }
 
-    const newItems = files.map(file => ({
+    const newItems = imageFiles.map(file => ({
       id: Math.random().toString(36).slice(2, 11),
       file,
       preview: URL.createObjectURL(file),
@@ -40,13 +62,52 @@ export default function PostComposer() {
     }));
 
     setQueue(prev => [...prev, ...newItems]);
+    setLastRunSummary([]);
     if (queue.length === 0) setSelectedIndex(0);
+    toast.success(`${sourceLabel} ${imageFiles.length} image${imageFiles.length === 1 ? '' : 's'}.`);
+  }, [queue.length]);
+
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
+
+  useEffect(() => {
+    const handlePaste = (event) => {
+      const files = Array.from(event.clipboardData?.files || []);
+      const imageFiles = files.filter(file => file.type.startsWith('image/'));
+
+      if (!imageFiles.length) return;
+
+      event.preventDefault();
+      addFilesToQueue(imageFiles, 'Pasted');
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [addFilesToQueue]);
+
+  useEffect(() => () => {
+    queueRef.current.forEach(item => URL.revokeObjectURL(item.preview));
+  }, []);
+
+  const handleFilesChange = (event) => {
+    const files = Array.from(event.target.files);
+    if (!files.length) return;
+
+    const invalidFile = files.find(file => !file.type.startsWith('image/'));
+    if (invalidFile) {
+      toast.error(`${invalidFile.name} is not an image file.`);
+      return;
+    }
+
+    addFilesToQueue(files, 'Added');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const updateQueueItem = (index, updates) => {
     setQueue(prev => {
       const newQueue = [...prev];
+      if (!newQueue[index]) return prev;
       newQueue[index] = { ...newQueue[index], ...updates };
       return newQueue;
     });
@@ -101,6 +162,16 @@ export default function PostComposer() {
       return;
     }
 
+    if (!validImageUrl) {
+      toast.error('Enter a valid public image URL or leave the field empty.');
+      return;
+    }
+
+    if (needsScheduleForRecurrence) {
+      toast.error('Choose a first scheduled date and time for recurring posts.');
+      return;
+    }
+
     let baseTime = null;
     if (scheduleTime) {
       baseTime = new Date(scheduleTime).getTime() / 1000;
@@ -112,8 +183,11 @@ export default function PostComposer() {
     }
 
     setIsSubmitting(true);
-    const toastId = toast.loading(`Publishing/Scheduling for ${selectedAccount.name}...`);
+    setLastRunSummary([]);
+    const toastId = toast.loading(`${recurrenceEnabled ? 'Scheduling recurring posts' : 'Publishing/Scheduling'} for ${selectedAccount.name}...`);
     let successCount = 0;
+    let hadFailures = false;
+    const occurrenceCount = recurrenceEnabled ? normalizedRecurrenceCount : 1;
 
     for (let i = 0; i < queue.length; i++) {
       const item = queue[i];
@@ -121,62 +195,91 @@ export default function PostComposer() {
 
       setSelectedIndex(i);
 
-      try {
-        const formData = new FormData();
-        formData.append('accountId', selectedAccount.id);
-        formData.append('publishFacebook', publishFacebook ? 'true' : 'false');
-        formData.append('publishInstagram', publishInstagram ? 'true' : 'false');
-        if (item.caption.trim()) formData.append('message', item.caption);
-        if (item.file) formData.append('image', item.file);
-        if (item.imageUrl?.trim()) formData.append('imageUrl', item.imageUrl.trim());
-
-        if (baseTime) {
-          const postUnixTime = Math.floor(baseTime + (i * spreadInterval * 3600));
-          formData.append('scheduledPublishTime', postUnixTime.toString());
-        }
-
-        const res = await fetch('/api/post', {
-          method: 'POST',
-          body: formData
-        });
-
-        const text = await res.text();
-        let data = {};
+      for (let occurrenceIndex = 0; occurrenceIndex < occurrenceCount; occurrenceIndex += 1) {
         try {
-          data = text ? JSON.parse(text) : {};
-        } catch {
-          data = { error: text || 'Failed to post' };
+          const formData = new FormData();
+          formData.append('accountId', selectedAccount.id);
+          formData.append('publishFacebook', publishFacebook ? 'true' : 'false');
+          formData.append('publishInstagram', publishInstagram ? 'true' : 'false');
+          if (item.caption.trim()) formData.append('message', item.caption);
+          if (item.file) formData.append('image', item.file);
+          if (item.imageUrl?.trim()) formData.append('imageUrl', item.imageUrl.trim());
+
+          if (baseTime) {
+            const recurrenceOffset = occurrenceIndex * recurrenceIntervalSeconds;
+            const spreadOffset = i * spreadInterval * 3600;
+            const postUnixTime = Math.floor(baseTime + recurrenceOffset + spreadOffset);
+            formData.append('scheduledPublishTime', postUnixTime.toString());
+          }
+
+          const res = await fetch('/api/post', {
+            method: 'POST',
+            body: formData
+          });
+
+          const text = await res.text();
+          let data = {};
+          try {
+            data = text ? JSON.parse(text) : {};
+          } catch {
+            data = { error: text || 'Failed to post' };
+          }
+
+          if (!res.ok) {
+            const fbCode = data.details?.code ? ` (code ${data.details.code})` : '';
+            throw new Error(`${data.error || 'Failed to post'}${fbCode}`);
+          }
+
+          const label = recurrenceEnabled ? `Post ${i + 1}, run ${occurrenceIndex + 1}` : `Post ${i + 1}`;
+          const resultRows = (data.results || []).map(result => ({
+            post: label,
+            target: result.target,
+            status: result.status || 'Unknown',
+            ok: result.status === 'Success'
+          }));
+          const failedTargets = data.results
+            ?.filter(result => result.status && result.status !== 'Success')
+            .map(result => `${result.target}: ${result.status}`);
+
+          if (failedTargets?.length) {
+            hadFailures = true;
+            updateQueueItem(i, { status: 'error' });
+            toast.error(`${label}: ${failedTargets.join('; ')}`);
+          } else {
+            updateQueueItem(i, { status: 'published' });
+            successCount++;
+          }
+
+          setLastRunSummary(prev => [...prev, ...resultRows]);
+        } catch (err) {
+          const label = recurrenceEnabled ? `Post ${i + 1}, run ${occurrenceIndex + 1}` : `Post ${i + 1}`;
+          hadFailures = true;
+          toast.error(`${label}: ${err.message}`);
+          updateQueueItem(i, { status: 'error' });
+          setLastRunSummary(prev => [
+            ...prev,
+            { post: label, target: selectedAccount.name, status: err.message, ok: false }
+          ]);
         }
-
-        if (!res.ok) {
-          const fbCode = data.details?.code ? ` (code ${data.details.code})` : '';
-          throw new Error(`${data.error || 'Failed to post'}${fbCode}`);
-        }
-
-        updateQueueItem(i, { status: 'published' });
-        const failedTargets = data.results
-          ?.filter(result => result.status && result.status !== 'Success')
-          .map(result => `${result.target}: ${result.status}`);
-
-        if (failedTargets?.length) {
-          toast.error(`Image ${i + 1}: ${failedTargets.join('; ')}`);
-        }
-
-        successCount++;
-      } catch (err) {
-        toast.error(`Image ${i + 1}: ${err.message}`);
-        updateQueueItem(i, { status: 'error' });
       }
     }
 
     setIsSubmitting(false);
-    toast.success(`Successfully processed ${successCount} posts.`, { id: toastId });
-    setQueue([]);
-    setSelectedIndex(0);
-    setScheduleTime('');
+    if (hadFailures) {
+      toast.error(`Finished with issues. ${successCount} posts fully succeeded; review the queue before retrying.`, { id: toastId });
+    } else {
+      toast.success(`Successfully processed ${successCount} posts.`, { id: toastId });
+      queue.forEach(item => URL.revokeObjectURL(item.preview));
+      setQueue([]);
+      setSelectedIndex(0);
+      setScheduleTime('');
+    }
   };
 
   const removeItem = (index) => {
+    const item = queue[index];
+    if (item?.preview) URL.revokeObjectURL(item.preview);
+    setLastRunSummary([]);
     setQueue(prev => prev.filter((_, i) => i !== index));
     if (selectedIndex >= index && selectedIndex > 0) {
       setSelectedIndex(selectedIndex - 1);
@@ -260,6 +363,17 @@ export default function PostComposer() {
             {isGenerating ? `Generating ${selectedAccount.name} captions...` : `Auto-Generate for ${selectedAccount.name}`}
           </button>
         </div>
+        <p className={styles.pasteHint}>Tip: copy an image from your clipboard and press Ctrl+V anywhere on this page.</p>
+
+        {(!hasTargets || !validImageUrl || scheduleIsTooSoon || needsScheduleForRecurrence || (scheduleTime && publishInstagram)) && (
+          <div className={styles.validationPanel} role="status">
+            {!hasTargets && <p>Choose Facebook, Instagram, or both.</p>}
+            {!validImageUrl && <p>Use a valid public image URL or leave it empty.</p>}
+            {scheduleIsTooSoon && <p>Scheduled time must be at least 10 minutes in the future.</p>}
+            {needsScheduleForRecurrence && <p>Recurring posts need a first scheduled date and time.</p>}
+            {scheduleTime && publishInstagram && <p>Instagram scheduling is not supported yet. Scheduled runs will publish/schedule Facebook and report Instagram as skipped.</p>}
+          </div>
+        )}
 
         {queue.length > 0 && (
           <div className={styles.queueContainer}>
@@ -268,16 +382,40 @@ export default function PostComposer() {
                 key={item.id}
                 className={`${styles.queueItem} ${selectedIndex === idx ? styles.active : ''} ${styles['status-' + item.status]}`}
                 onClick={() => setSelectedIndex(idx)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setSelectedIndex(idx);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label={`Edit post ${idx + 1}, status ${item.status}`}
               >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={item.preview} alt="thumb" />
                 <div className={styles.queueInfo}>
                   <span className={styles.queueLabel}>Post {idx + 1}</span>
                   <span className={styles.queueStatus}>{item.status}</span>
                 </div>
-                <button className={styles.removeQueueBtn} onClick={(e) => { e.stopPropagation(); removeItem(idx); }}>x</button>
+                <button
+                  type="button"
+                  className={styles.removeQueueBtn}
+                  aria-label={`Remove post ${idx + 1}`}
+                  onClick={(event) => { event.stopPropagation(); removeItem(idx); }}
+                >
+                  x
+                </button>
               </div>
             ))}
           </div>
+        )}
+
+        {queue.length === 0 && (
+          <label htmlFor="bulk-upload" className={styles.emptyUpload}>
+            <strong>Add Photos</strong>
+            <span>PNG, JPG, WEBP. You can also paste an image with Ctrl+V.</span>
+          </label>
         )}
 
         {selectedItem && (
@@ -302,6 +440,7 @@ export default function PostComposer() {
                 value={selectedItem.imageUrl}
                 onChange={e => updateQueueItem(selectedIndex, { imageUrl: e.target.value })}
                 placeholder="https://example.com/image.jpg"
+                aria-invalid={!validImageUrl}
                 disabled={isSubmitting}
               />
             </div>
@@ -312,7 +451,7 @@ export default function PostComposer() {
           <h3>Scheduling Options</h3>
           <div className={styles.scheduleRow}>
             <div className={styles.scheduleInput}>
-              <label>Start Date & Time (Leave blank to post now)</label>
+              <label>First Date & Time (Leave blank to post now)</label>
               <input
                 type="datetime-local"
                 value={scheduleTime}
@@ -322,7 +461,7 @@ export default function PostComposer() {
             </div>
             {scheduleTime && queue.length > 1 && (
               <div className={styles.scheduleInput}>
-                <label>Spread Interval (Hours)</label>
+                <label>Spread Posts Apart (Hours)</label>
                 <input
                   type="number"
                   min="0"
@@ -334,27 +473,80 @@ export default function PostComposer() {
               </div>
             )}
           </div>
+          <div className={styles.recurrenceGrid}>
+            <div className={styles.scheduleInput}>
+              <label>Repeat</label>
+              <select
+                value={recurrenceFrequency}
+                onChange={event => setRecurrenceFrequency(event.target.value)}
+                disabled={isSubmitting}
+              >
+                <option value="none">Do not repeat</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+              </select>
+            </div>
+            {recurrenceEnabled && (
+              <div className={styles.scheduleInput}>
+                <label>Occurrences</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="60"
+                  step="1"
+                  value={recurrenceCount}
+                  onChange={event => setRecurrenceCount(event.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+            )}
+          </div>
+          {recurrenceEnabled && (
+            <p className={styles.scheduleHint}>
+              This will create {totalScheduledJobs} scheduled Facebook post{totalScheduledJobs === 1 ? '' : 's'}.
+              Example: choose tomorrow at 9:00 AM and Daily to post every day at 9:00 AM.
+            </p>
+          )}
         </div>
 
+        {lastRunSummary.length > 0 && (
+          <div className={styles.resultPanel} aria-live="polite">
+            <h3>Publish Results</h3>
+            <div className={styles.resultList}>
+              {lastRunSummary.map((result, index) => (
+                <div
+                  key={`${result.post}-${result.target}-${index}`}
+                  className={`${styles.resultItem} ${result.ok ? styles.resultSuccess : styles.resultError}`}
+                >
+                  <span>{result.post}</span>
+                  <strong>{result.target}</strong>
+                  <em>{result.status}</em>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <button
-          className="btn"
+          className={`btn ${styles.submitButton}`}
           onClick={handleSubmitAll}
-          disabled={queue.length === 0 || isSubmitting || isGenerating}
-          style={{ marginTop: 'auto' }}
+          disabled={!canSubmit}
         >
-          {isSubmitting ? <><span className={styles.spinner}></span> Processing...</> : (scheduleTime ? `Schedule ${queue.length} ${selectedAccount.name} Posts` : `Publish ${queue.length} ${selectedAccount.name} Posts Now`)}
+          {isSubmitting ? <><span className={styles.spinner}></span> Processing...</> : publishLabel}
         </button>
       </div>
 
       <div className={`glass-panel ${styles.previewPane}`}>
-        <h2 className={styles.paneTitle}>Live Preview {selectedItem ? `(Post ${selectedIndex + 1})` : ''}</h2>
-        <div className={styles.previewTargets}>
-          <span>{selectedAccount.name}</span>
-          <span>
-            {publishFacebook ? 'Facebook' : ''}
-            {publishFacebook && publishInstagram ? ' + ' : ''}
-            {publishInstagram ? 'Instagram' : ''}
-          </span>
+        <div className={styles.previewHeader}>
+          <h2 className={styles.paneTitle}>Live Preview {selectedItem ? `(Post ${selectedIndex + 1})` : ''}</h2>
+          <div className={styles.previewTargets}>
+            <span>{selectedAccount.name}</span>
+            <span>
+              {publishFacebook ? 'Facebook' : ''}
+              {publishFacebook && publishInstagram ? ' + ' : ''}
+              {publishInstagram ? 'Instagram' : ''}
+            </span>
+          </div>
         </div>
         <div className={styles.previewContent}>
           {selectedItem ? (
@@ -386,6 +578,7 @@ export default function PostComposer() {
               </div>
 
               <div className={styles.fbImageWrapper}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={selectedItem.preview} alt="Preview" className={styles.fbImage} />
               </div>
             </div>

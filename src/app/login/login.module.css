@@ -1,0 +1,81 @@
+.loginShell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f766e 0%, #9f1239 100%);
+  padding: 20px;
+}
+
+.loginPanel {
+  width: 100%;
+  max-width: 400px;
+  padding: 40px 30px;
+}
+
+.title {
+  text-align: center;
+  margin-bottom: 10px;
+  font-size: 1.8rem;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  text-align: center;
+  color: var(--text-secondary);
+  margin-bottom: 30px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field label {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.passwordRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.toggleButton {
+  border: 1px solid var(--surface-border);
+  background: #fff;
+  border-radius: 8px;
+  min-width: 64px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.toggleButton:focus-visible {
+  outline: 3px solid rgba(128, 0, 0, 0.22);
+  outline-offset: 2px;
+}
+
+.errorText {
+  border: 1px solid rgba(228, 28, 56, 0.18);
+  background: rgba(228, 28, 56, 0.08);
+  color: #9f1239;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.submitButton {
+  margin-top: 10px;
+}

@@ -1,13 +1,12 @@
 .mainContainer {
-  flex: 1;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
 }
 
 .header {
-  padding: 20px 32px;
+  min-height: 72px;
+  padding: 14px 32px;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -15,6 +14,8 @@
   background: var(--surface-color);
   backdrop-filter: blur(16px);
   z-index: 10;
+  position: sticky;
+  top: 0;
 }
 
 .logoMark {
@@ -34,11 +35,37 @@
   color: var(--text-secondary);
   font-size: 0.9rem;
   margin-left: auto;
+  text-align: right;
 }
 
 .dashboard {
   flex: 1;
-  overflow: hidden;
   display: flex;
   padding: 24px;
+}
+
+@media (max-width: 720px) {
+  .header {
+    min-height: auto;
+    padding: 14px 20px;
+    flex-wrap: wrap;
+    gap: 10px 12px;
+  }
+
+  .title {
+    font-size: 1.1rem;
+  }
+
+  .subtitle {
+    order: 4;
+    width: 100%;
+    margin-left: 48px;
+    text-align: left;
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+
+  .dashboard {
+    padding: 16px;
+  }
 }

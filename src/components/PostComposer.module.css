@@ -1,9 +1,9 @@
 .splitGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(420px, 0.95fr) minmax(420px, 1.05fr);
+  align-items: start;
   gap: 24px;
   width: 100%;
-  height: 100%;
   max-width: 1400px;
   margin: 0 auto;
 }
@@ -12,14 +12,20 @@
   display: flex;
   flex-direction: column;
   padding: 24px;
-  height: 100%;
+  max-height: calc(100vh - 120px);
   overflow-y: auto;
+}
+
+.previewPane {
+  position: sticky;
+  top: 96px;
 }
 
 .paneTitle {
   font-size: 1.1rem;
   font-weight: 600;
   color: var(--text-secondary);
+  line-height: 1.25;
 }
 
 .accountHeader {
@@ -143,7 +149,14 @@
 .topControls {
   display: flex;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 14px;
+}
+
+.pasteHint {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  margin: -4px 0 14px;
 }
 
 .iconBtn {
@@ -159,6 +172,7 @@
   display: inline-block;
   flex: 1;
   text-align: center;
+  min-height: 42px;
 }
 
 .iconBtn:hover:not(.disabled) {
@@ -181,6 +195,7 @@
   transition: all 0.2s;
   flex: 2;
   box-shadow: 0 4px 12px rgba(128, 0, 0, 0.2);
+  min-height: 42px;
 }
 
 .aiBtn:hover:not(:disabled) {
@@ -194,22 +209,58 @@
   cursor: not-allowed;
 }
 
-/* Queue List */
+.validationPanel {
+  border: 1px solid rgba(228, 28, 56, 0.18);
+  background: rgba(228, 28, 56, 0.07);
+  color: #9f1239;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  display: grid;
+  gap: 4px;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.emptyUpload {
+  border: 1px dashed rgba(128, 0, 0, 0.28);
+  background: rgba(128, 0, 0, 0.035);
+  border-radius: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  padding: 22px 16px;
+  margin-bottom: 20px;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.emptyUpload:hover {
+  border-color: var(--primary-color);
+  background: rgba(128, 0, 0, 0.06);
+}
+
+.emptyUpload span {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
 .queueContainer {
   display: flex;
   overflow-x: auto;
-  gap: 16px;
-  padding: 12px 0 16px 0;
-  margin-top: 10px;
-  margin-bottom: 30px;
+  gap: 12px;
+  padding: 10px 2px 16px;
+  margin: 4px 0 22px;
   scrollbar-width: thin;
 }
 
 .queueItem {
   position: relative;
-  min-width: 80px;
-  width: 80px;
-  height: 100px;
+  min-width: 92px;
+  width: 92px;
+  height: 116px;
   border-radius: 8px;
   overflow: hidden;
   border: 2px solid transparent;
@@ -221,8 +272,12 @@
 
 .queueItem.active {
   border-color: var(--primary-color);
-  transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(128,0,0,0.2);
+  box-shadow: 0 0 0 3px rgba(128,0,0,0.12);
+}
+
+.queueItem:focus-visible {
+  outline: 3px solid rgba(128, 0, 0, 0.22);
+  outline-offset: 2px;
 }
 
 .queueItem img {
@@ -247,7 +302,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  font-size: 0.6rem;
+  font-size: 0.68rem;
   line-height: 1.2;
 }
 
@@ -278,7 +333,11 @@
   cursor: pointer;
   font-size: 10px;
 }
-.removeQueueBtn:hover { background: red; }
+.removeQueueBtn:hover { background: #9f1239; }
+.removeQueueBtn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
 
 /* Active Editor */
 .activeEditor {
@@ -304,7 +363,7 @@
 .textareaWrapper textarea {
   flex: 1;
   resize: none;
-  min-height: 150px;
+  min-height: 190px;
   width: 100%;
   border: 1px solid var(--surface-border);
   border-radius: 8px;
@@ -356,7 +415,7 @@
 .schedulingBlock {
   background: #f9f9f9;
   border: 1px solid var(--surface-border);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 16px;
   margin-bottom: 24px;
 }
@@ -371,6 +430,13 @@
   gap: 16px;
 }
 
+.recurrenceGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 14px;
+}
+
 .scheduleInput {
   flex: 1;
   display: flex;
@@ -383,11 +449,87 @@
   color: var(--text-secondary);
 }
 
-.scheduleInput input {
+.scheduleInput input,
+.scheduleInput select {
   padding: 10px;
   border: 1px solid var(--surface-border);
   border-radius: 8px;
   font-family: inherit;
+  background: #fff;
+  color: var(--text-primary);
+}
+
+.scheduleInput select:focus,
+.scheduleInput input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(128, 0, 0, 0.12);
+}
+
+.scheduleHint {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin-top: 12px;
+}
+
+.resultPanel {
+  border: 1px solid var(--surface-border);
+  background: #fff;
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.resultPanel h3 {
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+}
+
+.resultList {
+  display: grid;
+  gap: 8px;
+}
+
+.resultItem {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  align-items: center;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.84rem;
+}
+
+.resultItem span {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.resultItem strong {
+  min-width: 0;
+}
+
+.resultItem em {
+  grid-column: 1 / -1;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.resultSuccess {
+  background: rgba(0, 164, 0, 0.08);
+  color: #14532d;
+}
+
+.resultError {
+  background: rgba(228, 28, 56, 0.08);
+  color: #9f1239;
+}
+
+.submitButton {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 4px;
 }
 
 /* Spinner */
@@ -404,11 +546,16 @@
   to { transform: rotate(360deg); }
 }
 
-/* FB Mockup Preview */
+.previewHeader {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
 .previewContent {
   flex: 1;
   background: #f0f2f5;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 24px;
   display: flex;
   align-items: flex-start;
@@ -423,7 +570,7 @@
   justify-content: space-between;
   color: var(--text-secondary);
   font-size: 0.8rem;
-  margin: -10px 0 14px;
+  gap: 12px;
 }
 
 .fbMockup {
@@ -494,6 +641,11 @@
 }
 
 .emptyState {
+  width: 100%;
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 40px;
   text-align: center;
   color: var(--text-secondary);
@@ -523,22 +675,81 @@
 @media (max-width: 900px) {
   .splitGrid {
     grid-template-columns: 1fr;
-    height: auto;
+    gap: 16px;
   }
 
   .controlPane,
   .previewPane {
+    max-height: none;
     overflow-y: visible;
+    position: static;
+    padding: 20px;
   }
 
   .scheduleRow,
+  .recurrenceGrid,
   .topControls,
-  .accountSwitcher,
   .platformToggles {
+    display: flex;
     flex-direction: column;
   }
 
   .accountSwitcher {
     grid-template-columns: 1fr;
+  }
+
+  .platformToggles label,
+  .iconBtn,
+  .aiBtn,
+  .submitButton {
+    width: 100%;
+  }
+
+  .queueContainer {
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .queueItem {
+    min-width: 96px;
+    width: 96px;
+    height: 122px;
+  }
+
+  .textareaWrapper textarea {
+    min-height: 220px;
+  }
+
+  .previewContent {
+    padding: 14px;
+  }
+
+  .fbMockup {
+    max-width: none;
+  }
+
+  .submitButton {
+    box-shadow: 0 10px 30px rgba(128, 0, 0, 0.12);
+  }
+}
+
+@media (max-width: 520px) {
+  .controlPane,
+  .previewPane {
+    padding: 16px;
+  }
+
+  .accountHeader {
+    align-items: center;
+  }
+
+  .accountHint {
+    font-size: 0.8rem;
+  }
+
+  .previewTargets {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
   }
 }

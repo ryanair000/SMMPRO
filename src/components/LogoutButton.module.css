@@ -1,0 +1,24 @@
+.logoutButton {
+  border: 1px solid var(--surface-border);
+  background: #fff;
+  color: var(--text-primary);
+  border-radius: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+
+.logoutButton:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 6px 18px rgba(128, 0, 0, 0.12);
+  transform: translateY(-1px);
+}
+
+.logoutButton:focus-visible {
+  outline: 3px solid rgba(128, 0, 0, 0.22);
+  outline-offset: 2px;
+}

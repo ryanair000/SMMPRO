@@ -1,5 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getAccountCredentials } from '@/lib/socialAccounts';
+import { requireAuth } from '@/lib/auth';
+import { assertContentLength, rateLimit } from '@/lib/rateLimit';
+import { SOCIAL_ACCOUNTS, getAccountCredentials } from '@/lib/socialAccounts';
+
+const MAX_FORM_BYTES = 25 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_MESSAGE_LENGTH = 2200;
+const MIN_SCHEDULE_DELAY_SECONDS = 10 * 60;
 
 function jsonError(message, status, details = null) {
   return NextResponse.json({ error: message, details }, { status });
@@ -124,8 +131,21 @@ async function postToInstagram({ igUserId, accessToken, caption, imageUrl }) {
 
 export async function POST(request) {
   try {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
+    const sizeError = assertContentLength(request, MAX_FORM_BYTES);
+    if (sizeError) return sizeError;
+
+    const rateLimitError = rateLimit(request, {
+      scope: 'post',
+      limit: 20,
+      windowMs: 60 * 1000
+    });
+    if (rateLimitError) return rateLimitError;
+
     const formData = await request.formData();
-    const message = formData.get('message') || '';
+    const message = formData.get('message')?.toString() || '';
     const image = formData.get('image'); // This is a File object if present
     const imageUrl = formData.get('imageUrl')?.toString().trim() || '';
     const scheduledTime = formData.get('scheduledPublishTime'); // Unix timestamp (optional)
@@ -133,14 +153,12 @@ export async function POST(request) {
     const publishInstagram = formData.get('publishInstagram') !== 'false';
     const accountId = formData.get('accountId')?.toString() || 'chezahub';
 
-    const { account, credentials } = getAccountCredentials(accountId);
-    const PAGE_ID = credentials.pageId;
-    const PAGE_TOKEN = credentials.pageToken;
-    const USER_TOKEN = credentials.userToken;
-    const IG_USER_ID = credentials.igUserId;
+    if (!SOCIAL_ACCOUNTS.some(account => account.id === accountId)) {
+      return jsonError('Unknown social account.', 400);
+    }
 
-    if (!PAGE_ID || !PAGE_TOKEN || PAGE_ID === 'your_page_id_here') {
-      return jsonError(`${account.name} Facebook page credentials are not configured in .env.local`, 500);
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      return jsonError(`Caption must be ${MAX_MESSAGE_LENGTH} characters or fewer.`, 400);
     }
 
     if (!message.trim() && !image && !imageUrl) {
@@ -149,6 +167,50 @@ export async function POST(request) {
 
     if (!publishFacebook && !publishInstagram) {
       return jsonError('Choose at least one publishing target.', 400);
+    }
+
+    if (image) {
+      if (!image.type?.startsWith('image/')) {
+        return jsonError('Uploaded file must be an image.', 400);
+      }
+
+      if (image.size > MAX_IMAGE_BYTES) {
+        return jsonError('Uploaded image must be 10 MB or smaller.', 413);
+      }
+    }
+
+    if (imageUrl) {
+      try {
+        const parsedImageUrl = new URL(imageUrl);
+        if (!['http:', 'https:'].includes(parsedImageUrl.protocol)) {
+          return jsonError('Image URL must start with http:// or https://.', 400);
+        }
+      } catch {
+        return jsonError('Image URL is not valid.', 400);
+      }
+    }
+
+    if (scheduledTime) {
+      const scheduleUnix = Number(scheduledTime);
+      const nowUnix = Date.now() / 1000;
+
+      if (!Number.isFinite(scheduleUnix)) {
+        return jsonError('Scheduled time must be a Unix timestamp.', 400);
+      }
+
+      if (scheduleUnix < nowUnix + MIN_SCHEDULE_DELAY_SECONDS) {
+        return jsonError('Scheduled time must be at least 10 minutes in the future.', 400);
+      }
+    }
+
+    const { account, credentials } = getAccountCredentials(accountId);
+    const PAGE_ID = credentials.pageId;
+    const PAGE_TOKEN = credentials.pageToken;
+    const USER_TOKEN = credentials.userToken;
+    const IG_USER_ID = credentials.igUserId;
+
+    if (publishFacebook && (!PAGE_ID || !PAGE_TOKEN || PAGE_ID === 'your_page_id_here')) {
+      return jsonError(`${account.name} Facebook page credentials are not configured in .env.local`, 500);
     }
 
     const results = [];

@@ -19,6 +19,15 @@ Meta short-lived user tokens must be exchanged with the matching Meta App ID and
 Put these values in `.env.local`:
 
 ```env
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=use_a_long_random_password
+AUTH_SECRET=use_at_least_32_random_characters
+
+OPENAI_API_KEY=your_openai_api_key
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_WEBHOOK_SECRET=your_telegram_webhook_secret_token
+TELEGRAM_ALLOWED_CHAT_IDS=123456789,987654321
+
 CHEZAHUB_FB_PAGE_ID=your_chezahub_facebook_page_id
 CHEZAHUB_FB_PAGE_ACCESS_TOKEN=your_chezahub_page_access_token
 CHEZAHUB_FB_USER_ACCESS_TOKEN=your_chezahub_user_access_token
@@ -32,6 +41,10 @@ JENGASITES_IG_USER_ID=your_jengasites_instagram_business_or_creator_account_id
 META_APP_ID=your_meta_app_id
 META_APP_SECRET=your_meta_app_secret
 ```
+
+`AUTH_SECRET` signs the admin session cookie. Use a long random value and rotate it if the old hard-coded login was ever deployed publicly.
+
+For Telegram, set your webhook with the same secret token stored in `TELEGRAM_WEBHOOK_SECRET`, and list only approved chat IDs in `TELEGRAM_ALLOWED_CHAT_IDS`.
 
 The legacy `NEXT_PUBLIC_FB_PAGE_ID`, `FB_PAGE_ACCESS_TOKEN`, `FB_USER_ACCESS_TOKEN`, and `IG_USER_ID` names still work as ChezaHub fallbacks.
 

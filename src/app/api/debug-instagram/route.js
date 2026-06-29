@@ -1,20 +1,24 @@
 import { NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth';
 
 function graphUrl(path) {
   const version = process.env.META_GRAPH_VERSION?.trim() || 'v20.0';
   return `https://graph.facebook.com/${version}/${path.replace(/^\//, '')}`;
 }
 
-export async function GET() {
+export async function GET(request) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
   const USER_TOKEN = process.env.FB_USER_ACCESS_TOKEN?.trim();
   const PAGE_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN?.trim();
   const IG_USER_ID = process.env.IG_USER_ID?.trim();
 
   const results = {
     env: {
-      IG_USER_ID: IG_USER_ID || 'MISSING',
-      USER_TOKEN: USER_TOKEN ? `...${USER_TOKEN.slice(-10)}` : 'MISSING',
-      PAGE_TOKEN: PAGE_TOKEN ? `...${PAGE_TOKEN.slice(-10)}` : 'MISSING',
+      IG_USER_ID: IG_USER_ID ? 'CONFIGURED' : 'MISSING',
+      USER_TOKEN: USER_TOKEN ? 'CONFIGURED' : 'MISSING',
+      PAGE_TOKEN: PAGE_TOKEN ? 'CONFIGURED' : 'MISSING',
     },
     userTokenTest: null,
     igAccountTest: null,
