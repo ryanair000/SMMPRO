@@ -32,7 +32,7 @@ export async function POST(request) {
     const adminEmail = process.env.ADMIN_EMAIL?.trim();
     const adminPassword = process.env.ADMIN_PASSWORD?.trim();
 
-    if (!adminEmail || !adminPassword || !process.env.AUTH_SECRET?.trim()) {
+    if (!adminEmail || !adminPassword) {
       return NextResponse.json({ error: 'Authentication is not configured' }, { status: 500 });
     }
 
@@ -47,7 +47,7 @@ export async function POST(request) {
     }
 
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 }
