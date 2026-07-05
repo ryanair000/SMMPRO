@@ -4,7 +4,17 @@ export const AUTH_COOKIE_NAME = 'auth-token';
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 function getAuthSecret() {
-  return process.env.AUTH_SECRET?.trim() || '';
+  const adminEmail = process.env.ADMIN_EMAIL?.trim() || '';
+  const adminPassword = process.env.ADMIN_PASSWORD?.trim() || '';
+
+  if (!adminEmail || !adminPassword) {
+    throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD must be configured');
+  }
+
+  return crypto
+    .createHash('sha256')
+    .update(`smm-pro-session:${adminEmail}:${adminPassword}`)
+    .digest('hex');
 }
 
 function base64UrlEncode(value) {
@@ -16,12 +26,7 @@ function base64UrlDecode(value) {
 }
 
 function sign(value) {
-  const secret = getAuthSecret();
-  if (!secret) {
-    throw new Error('AUTH_SECRET is not configured');
-  }
-
-  return crypto.createHmac('sha256', secret).update(value).digest('base64url');
+  return crypto.createHmac('sha256', getAuthSecret()).update(value).digest('base64url');
 }
 
 function safeEqual(a, b) {
