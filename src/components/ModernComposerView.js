@@ -16,6 +16,7 @@ function PaneHeader({ title, badge, hint, children }) {
 export default function ModernComposerView({ model: m, fileInputRef }) {
   const [mediaPage, setMediaPage] = useState(0);
   const [panel, setPanel] = useState(null);
+  const [reorderAnnouncement, setReorderAnnouncement] = useState('');
   const pageSize = 3;
   const pageCount = Math.max(1, Math.ceil(m.queue.length / pageSize));
   const safePage = Math.min(mediaPage, pageCount - 1);
@@ -45,6 +46,13 @@ export default function ModernComposerView({ model: m, fileInputRef }) {
   const selectItem = index => {
     m.setSelectedIndex(Math.max(0, Math.min(index, m.queue.length - 1)));
     setMediaPage(Math.floor(index / pageSize));
+  };
+
+  const moveItem = (fromIndex, toIndex) => {
+    if (fromIndex === toIndex || toIndex < 0 || toIndex >= m.queue.length) return;
+    m.moveQueueItem(fromIndex, toIndex);
+    setMediaPage(Math.floor(toIndex / pageSize));
+    setReorderAnnouncement(`${m.carouselMode ? 'Slide' : 'Post'} moved to position ${toIndex + 1}.`);
   };
 
   return (
@@ -77,14 +85,14 @@ export default function ModernComposerView({ model: m, fileInputRef }) {
       <section className={styles.composerCard}>
         <div className={styles.workspace}>
           <section className={styles.mediaPane}>
-            <PaneHeader title="Media" badge={m.queue.length + '/20'} hint={m.carouselMode ? 'Drag images to set carousel order.' : 'Select an image to edit its post.'}>
+            <PaneHeader title="Media" badge={m.queue.length + '/20'} hint={m.carouselMode ? 'Set the order of carousel slides.' : 'Set the publish order of separate posts.'}>
               <button type="button" className={styles.addButton} onClick={() => fileInputRef.current?.click()}
                 disabled={m.isSubmitting || m.isGenerating || m.queue.length >= 20}>+ Add images</button>
             </PaneHeader>
             <input ref={fileInputRef} type="file" accept="image/*" multiple className={styles.hiddenInput}
               onChange={m.handleFilesChange} disabled={m.isSubmitting || m.isGenerating} />
             <div className={[styles.dropZone, m.isDragging ? styles.dropActive : '', !m.queue.length ? styles.dropEmpty : ''].filter(Boolean).join(' ')}
-              onDragEnter={event => { event.preventDefault(); m.setIsDragging(true); }} onDragOver={event => event.preventDefault()}
+              onDragEnter={event => { event.preventDefault(); if (event.dataTransfer.types.includes('Files')) m.setIsDragging(true); }} onDragOver={event => event.preventDefault()}
               onDragLeave={() => m.setIsDragging(false)} onDrop={m.handleDrop}>
               {!m.queue.length ? <button type="button" className={styles.emptyDrop} onClick={() => fileInputRef.current?.click()}>
                 <span>+</span><strong>Drop or paste your posters here</strong><small>PNG, JPG or WebP · up to 20 images</small><em>Choose images</em>
@@ -93,7 +101,7 @@ export default function ModernComposerView({ model: m, fileInputRef }) {
                   const index = start + pageIndex;
                   const source = item.objectUrl || item.imageUrl;
                   return <article key={item.id} className={[styles.mediaCard, index === m.selectedIndex ? styles.selected : '', m.draggedQueueItemId === item.id ? styles.dragging : ''].filter(Boolean).join(' ')}
-                    draggable={m.carouselMode && !m.isSubmitting} onDragStart={event => m.handleQueueDragStart(event, item.id)}
+                    draggable={!m.isSubmitting && m.queue.length > 1} onDragStart={event => m.handleQueueDragStart(event, item.id)}
                     onDragOver={event => event.preventDefault()} onDrop={event => m.handleQueueDrop(event, index)}
                     onDragEnd={() => m.setDraggedQueueItemId(null)}>
                     <button type="button" className={styles.previewButton} onClick={() => selectItem(index)} aria-label={'Edit image ' + (index + 1)}>
@@ -101,16 +109,20 @@ export default function ModernComposerView({ model: m, fileInputRef }) {
                       <b className={styles.order}>{index + 1}</b>
                       <small className={item.status === 'error' ? styles.error : ''}>{item.status === 'generating' ? 'Writing...' : item.status === 'error' ? 'Attention' : 'Ready'}</small>
                     </button>
-                    <div className={styles.cardActions}>{m.carouselMode && <>
-                      <button type="button" onClick={() => m.moveQueueItem(index, index - 1)} disabled={!index} aria-label="Move earlier">←</button>
-                      <button type="button" onClick={() => m.moveQueueItem(index, index + 1)} disabled={index === m.queue.length - 1} aria-label="Move later">→</button>
-                    </>}<button type="button" onClick={() => m.removeItem(index)}>Remove</button></div>
+                    <div className={styles.cardActions}>
+                      <button type="button" onClick={() => moveItem(index, index - 1)} disabled={!index}
+                        aria-label={`Move ${m.carouselMode ? 'slide' : 'post'} ${index + 1} earlier`} title="Move earlier">←</button>
+                      <button type="button" onClick={() => moveItem(index, index + 1)} disabled={index === m.queue.length - 1}
+                        aria-label={`Move ${m.carouselMode ? 'slide' : 'post'} ${index + 1} later`} title="Move later">→</button>
+                      <button type="button" onClick={() => m.removeItem(index)} aria-label={`Remove ${m.carouselMode ? 'slide' : 'post'} ${index + 1}`}>Remove</button>
+                    </div>
                   </article>;
                 })}</div>
-                <div className={styles.mediaFooter}><span>{m.carouselMode ? 'Drag any poster to rearrange it.' : 'Paste images anywhere with Ctrl+V.'}</span>
+                <div className={styles.mediaFooter}><span>Drag images or use the arrows to set {m.carouselMode ? 'slide' : 'publish'} order.</span>
                   {pageCount > 1 && <nav className={styles.pager}><button type="button" onClick={() => setMediaPage(safePage - 1)} disabled={!safePage}>←</button>
                     <span>{safePage + 1} / {pageCount}</span><button type="button" onClick={() => setMediaPage(safePage + 1)} disabled={safePage === pageCount - 1}>→</button></nav>}
                 </div>
+                <p className={styles.srOnly} aria-live="polite">{reorderAnnouncement}</p>
               </>}
             </div>
           </section>

@@ -228,7 +228,8 @@ export default function PostComposer() {
     event.preventDefault();
     setIsDragging(false);
     if (isSubmitting) return;
-    addFilesToQueue(Array.from(event.dataTransfer.files || []), 'Added');
+    const files = Array.from(event.dataTransfer.files || []);
+    if (files.length) addFilesToQueue(files, 'Added');
   };
 
   const updateQueueItem = (index, updates) => {
@@ -524,15 +525,15 @@ export default function PostComposer() {
   };
 
   const handleQueueDragStart = (event, itemId) => {
-    if (!carouselMode || queue.length < 2) return;
+    if (queue.length < 2) return;
     setDraggedQueueItemId(itemId);
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', itemId);
   };
 
   const handleQueueDrop = (event, toIndex) => {
-    if (!carouselMode) return;
     event.preventDefault();
+    event.stopPropagation();
     const itemId = event.dataTransfer.getData('text/plain') || draggedQueueItemId;
     const fromIndex = queue.findIndex(item => item.id === itemId);
     moveQueueItem(fromIndex, toIndex);
