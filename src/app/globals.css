@@ -1,16 +1,16 @@
 :root {
-  --bg-color: #ffffff;
-  --surface-color: rgba(255, 255, 255, 0.8);
-  --surface-border: rgba(0, 0, 0, 0.08);
+  --bg-color: #f8f4f1;
+  --surface-color: #fffdfb;
+  --surface-border: #eadfda;
   --primary-color: #800000;
   --primary-hover: #600000;
-  --text-primary: #1c1e21;
-  --text-secondary: #65676b;
+  --text-primary: #281c1a;
+  --text-secondary: #766965;
   --error-color: #e41c38;
   --success-color: #00a400;
   
   --shadow-glow: 0 0 40px rgba(128, 0, 0, 0.1);
-  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05);
+  --glass-shadow: 0 18px 55px rgba(72, 31, 24, 0.07);
 }
 
 * {
@@ -28,9 +28,9 @@ body {
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  background-image: 
-    radial-gradient(circle at 15% 50%, rgba(128, 0, 0, 0.04), transparent 25%),
-    radial-gradient(circle at 85% 30%, rgba(128, 0, 0, 0.04), transparent 25%);
+  background-image:
+    radial-gradient(circle at 10% 16%, rgba(128, 0, 0, 0.05), transparent 25%),
+    radial-gradient(circle at 90% 28%, rgba(15, 118, 110, 0.035), transparent 24%);
 }
 
 a {
@@ -41,10 +41,8 @@ a {
 /* Glassmorphism utilities */
 .glass-panel {
   background: var(--surface-color);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--surface-border);
-  border-radius: 16px;
+  border-radius: 18px;
   box-shadow: var(--glass-shadow);
 }
 

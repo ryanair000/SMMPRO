@@ -7,6 +7,10 @@ export const SOCIAL_ACCOUNTS = [
     website: 'chezahub.co.ke',
     accent: '#9f1239',
     shortName: 'CH',
+    platforms: {
+      facebook: true,
+      instagram: true
+    },
     env: {
       pageId: 'CHEZAHUB_FB_PAGE_ID',
       pageToken: 'CHEZAHUB_FB_PAGE_ACCESS_TOKEN',
@@ -28,6 +32,10 @@ export const SOCIAL_ACCOUNTS = [
     website: 'jengasites.com',
     accent: '#0f766e',
     shortName: 'JS',
+    platforms: {
+      facebook: false,
+      instagram: true
+    },
     env: {
       pageId: 'JENGASITES_FB_PAGE_ID',
       pageToken: 'JENGASITES_FB_PAGE_ACCESS_TOKEN',

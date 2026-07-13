@@ -2,11 +2,14 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { assertContentLength, rateLimit } from '@/lib/rateLimit';
 import { SOCIAL_ACCOUNTS, getAccountCredentials } from '@/lib/socialAccounts';
+import { uploadPublicImage } from '@/lib/publicImage';
 
 const MAX_FORM_BYTES = 25 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_MESSAGE_LENGTH = 2200;
 const MIN_SCHEDULE_DELAY_SECONDS = 10 * 60;
+const MIN_CAROUSEL_ITEMS = 2;
+const MAX_CAROUSEL_ITEMS = 10;
 
 function jsonError(message, status, details = null) {
   return NextResponse.json({ error: message, details }, { status });
@@ -69,6 +72,32 @@ async function getInstagramContainerStatus(creationId, accessToken) {
   return { ok: true, data };
 }
 
+async function waitForInstagramContainer(creationId, accessToken) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const statusResult = await getInstagramContainerStatus(creationId, accessToken);
+    if (!statusResult.ok) return statusResult;
+
+    const statusCode = statusResult.data.status_code;
+    if (statusCode === 'FINISHED') return { ok: true, data: statusResult.data };
+
+    if (statusCode === 'ERROR' || statusCode === 'EXPIRED') {
+      return {
+        ok: false,
+        error: `Instagram Error: media container ${statusCode.toLowerCase()}`,
+        details: statusResult.data
+      };
+    }
+
+    await sleep(2500);
+  }
+
+  return {
+    ok: false,
+    error: 'Instagram Error: media container was not ready before timeout',
+    details: { creationId }
+  };
+}
+
 async function postToInstagram({ igUserId, accessToken, caption, imageUrl }) {
   const createFormData = new FormData();
   createFormData.append('image_url', imageUrl);
@@ -86,37 +115,8 @@ async function postToInstagram({ igUserId, accessToken, caption, imageUrl }) {
   }
 
   const creationId = createResult.data.id;
-  let isFinished = false;
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    const statusResult = await getInstagramContainerStatus(creationId, accessToken);
-    if (!statusResult.ok) {
-      return statusResult;
-    }
-
-    const statusCode = statusResult.data.status_code;
-    if (statusCode === 'FINISHED') {
-      isFinished = true;
-      break;
-    }
-
-    if (statusCode === 'ERROR' || statusCode === 'EXPIRED') {
-      return {
-        ok: false,
-        error: `Instagram Error: media container ${statusCode.toLowerCase()}`,
-        details: statusResult.data
-      };
-    }
-
-    await sleep(2500);
-  }
-
-  if (!isFinished) {
-    return {
-      ok: false,
-      error: 'Instagram Error: media container was not ready before timeout',
-      details: { creationId }
-    };
-  }
+  const readyResult = await waitForInstagramContainer(creationId, accessToken);
+  if (!readyResult.ok) return readyResult;
 
   const publishFormData = new FormData();
   publishFormData.append('creation_id', creationId);
@@ -126,6 +126,54 @@ async function postToInstagram({ igUserId, accessToken, caption, imageUrl }) {
     graphUrl(`/${igUserId}/media_publish`),
     publishFormData,
     'Instagram'
+  );
+}
+
+async function postCarouselToInstagram({ igUserId, accessToken, caption, items }) {
+  const childIds = [];
+
+  for (let index = 0; index < items.length; index += 1) {
+    const childFormData = new FormData();
+    childFormData.append('image_url', items[index].imageUrl);
+    childFormData.append('is_carousel_item', 'true');
+    childFormData.append('access_token', accessToken);
+
+    const childResult = await postToFacebook(
+      graphUrl(`/${igUserId}/media`),
+      childFormData,
+      `Instagram carousel item ${index + 1}`
+    );
+    if (!childResult.ok) return childResult;
+
+    const readyResult = await waitForInstagramContainer(childResult.data.id, accessToken);
+    if (!readyResult.ok) return readyResult;
+    childIds.push(childResult.data.id);
+  }
+
+  const carouselFormData = new FormData();
+  carouselFormData.append('media_type', 'CAROUSEL');
+  carouselFormData.append('children', childIds.join(','));
+  if (caption) carouselFormData.append('caption', caption);
+  carouselFormData.append('access_token', accessToken);
+
+  const carouselResult = await postToFacebook(
+    graphUrl(`/${igUserId}/media`),
+    carouselFormData,
+    'Instagram carousel'
+  );
+  if (!carouselResult.ok) return carouselResult;
+
+  const readyResult = await waitForInstagramContainer(carouselResult.data.id, accessToken);
+  if (!readyResult.ok) return readyResult;
+
+  const publishFormData = new FormData();
+  publishFormData.append('creation_id', carouselResult.data.id);
+  publishFormData.append('access_token', accessToken);
+
+  return postToFacebook(
+    graphUrl(`/${igUserId}/media_publish`),
+    publishFormData,
+    'Instagram carousel'
   );
 }
 
@@ -149,19 +197,36 @@ export async function POST(request) {
     const image = formData.get('image'); // This is a File object if present
     const imageUrl = formData.get('imageUrl')?.toString().trim() || '';
     const scheduledTime = formData.get('scheduledPublishTime'); // Unix timestamp (optional)
-    const publishFacebook = formData.get('publishFacebook') !== 'false';
-    const publishInstagram = formData.get('publishInstagram') !== 'false';
+    const requestedPublishFacebook = formData.get('publishFacebook') !== 'false';
+    const requestedPublishInstagram = formData.get('publishInstagram') !== 'false';
+    const publishMode = formData.get('publishMode') === 'carousel' ? 'carousel' : 'individual';
     const accountId = formData.get('accountId')?.toString() || 'chezahub';
+    let carouselItems = [];
+
+    if (publishMode === 'carousel') {
+      try {
+        const parsedItems = JSON.parse(formData.get('carouselItems')?.toString() || '[]');
+        carouselItems = Array.isArray(parsedItems) ? parsedItems : [];
+      } catch {
+        return jsonError('Carousel items must be valid JSON.', 400);
+      }
+    }
 
     if (!SOCIAL_ACCOUNTS.some(account => account.id === accountId)) {
       return jsonError('Unknown social account.', 400);
     }
 
+    const { account, credentials } = getAccountCredentials(accountId);
+    const publishFacebook = publishMode === 'carousel'
+      ? false
+      : requestedPublishFacebook && account.platforms?.facebook !== false;
+    const publishInstagram = requestedPublishInstagram && account.platforms?.instagram !== false;
+
     if (message.length > MAX_MESSAGE_LENGTH) {
       return jsonError(`Caption must be ${MAX_MESSAGE_LENGTH} characters or fewer.`, 400);
     }
 
-    if (!message.trim() && !image && !imageUrl) {
+    if (!message.trim() && !image && !imageUrl && carouselItems.length === 0) {
       return jsonError('Add a caption or image before publishing.', 400);
     }
 
@@ -190,6 +255,29 @@ export async function POST(request) {
       }
     }
 
+    if (publishMode === 'carousel') {
+      if (!publishInstagram) {
+        return jsonError('Instagram must be enabled for carousel publishing.', 400);
+      }
+
+      if (carouselItems.length < MIN_CAROUSEL_ITEMS || carouselItems.length > MAX_CAROUSEL_ITEMS) {
+        return jsonError(`Instagram carousels require ${MIN_CAROUSEL_ITEMS}-${MAX_CAROUSEL_ITEMS} images.`, 400);
+      }
+
+      const invalidCarouselItem = carouselItems.find(item => {
+        if (!item || typeof item.imageUrl !== 'string') return true;
+        try {
+          const url = new URL(item.imageUrl);
+          return !['http:', 'https:'].includes(url.protocol);
+        } catch {
+          return true;
+        }
+      });
+      if (invalidCarouselItem) {
+        return jsonError('Every carousel image needs a valid public HTTPS URL.', 400);
+      }
+    }
+
     if (scheduledTime) {
       const scheduleUnix = Number(scheduledTime);
       const nowUnix = Date.now() / 1000;
@@ -203,7 +291,6 @@ export async function POST(request) {
       }
     }
 
-    const { account, credentials } = getAccountCredentials(accountId);
     const PAGE_ID = credentials.pageId;
     const PAGE_TOKEN = credentials.pageToken;
     const USER_TOKEN = credentials.userToken;
@@ -215,6 +302,14 @@ export async function POST(request) {
 
     const results = [];
     let effectiveImageUrl = imageUrl; // may be updated after FB post
+
+    if (publishInstagram && !publishFacebook && !effectiveImageUrl && image) {
+      try {
+        effectiveImageUrl = await uploadPublicImage(image);
+      } catch (error) {
+        return jsonError(error.message || 'Could not prepare the image for Instagram.', 502);
+      }
+    }
 
     if (publishFacebook) {
       const endpoint = image || effectiveImageUrl
@@ -269,29 +364,40 @@ export async function POST(request) {
       } else if (scheduledTime) {
         results.push({ target: `${account.name} Instagram`, status: 'Skipped: Instagram scheduling is not supported yet. Post now to publish on Instagram.' });
         // Silent skip — Instagram scheduling not supported
-      } else if (!effectiveImageUrl) {
+      } else if (publishMode !== 'carousel' && !effectiveImageUrl) {
         results.push({ target: `${account.name} Instagram`, status: 'Failed: Instagram needs a public image URL. Add one in the Instagram URL field, or post to Facebook first and try again.' });
         // Silent skip — no image URL available (text-only post or CDN fetch failed)
       } else if (!USER_TOKEN) {
         results.push({ target: `${account.name} Instagram`, status: `Failed: ${account.env.userToken} is missing - required for Instagram posting` });
       } else {
         // Instagram Graph API requires the USER access token, not the PAGE token
-        const instagramResult = await postToInstagram({
-          igUserId: IG_USER_ID,
-          accessToken: USER_TOKEN,
-          caption: message,
-          imageUrl: effectiveImageUrl
-        });
+        const instagramResult = publishMode === 'carousel'
+          ? await postCarouselToInstagram({
+              igUserId: IG_USER_ID,
+              accessToken: USER_TOKEN,
+              caption: message,
+              items: carouselItems
+            })
+          : await postToInstagram({
+              igUserId: IG_USER_ID,
+              accessToken: USER_TOKEN,
+              caption: message,
+              imageUrl: effectiveImageUrl
+            });
 
         if (!instagramResult.ok) {
           results.push({ target: `${account.name} Instagram`, status: `Failed: ${instagramResult.error}` });
         } else {
-          results.push({ target: `${account.name} Instagram`, id: instagramResult.data.id, status: 'Success' });
+          results.push({
+            target: `${account.name} Instagram${publishMode === 'carousel' ? ' Carousel' : ''}`,
+            id: instagramResult.data.id,
+            status: 'Success'
+          });
         }
       }
     }
 
-    return NextResponse.json({ success: true, account: account.id, results });
+    return NextResponse.json({ success: true, account: account.id, mode: publishMode, results });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
