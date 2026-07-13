@@ -1,8 +1,9 @@
-.mainContainer{height:100dvh;min-height:680px;overflow:hidden;display:grid;grid-template-rows:64px minmax(0,1fr);color:var(--text-primary)}
+.mainContainer{height:100dvh;min-height:0;overflow:hidden;display:grid;grid-template-rows:64px minmax(0,1fr);color:var(--text-primary)}
 .header{z-index:20;padding:0 max(22px,calc((100vw - 1360px)/2));display:flex;align-items:center;gap:18px;border-bottom:1px solid #e5dcd8;background:rgba(255,253,251,.96);backdrop-filter:blur(16px)}
 .brandLockup{margin-right:auto;display:flex;align-items:center;gap:10px}.logoMark{width:36px;height:36px;display:grid;place-items:center;border-radius:11px;background:linear-gradient(145deg,#9d1b27,#700012);color:#fff;font-weight:900;box-shadow:0 7px 18px rgba(128,0,0,.18)}
 .brandLockup>div:last-child{display:grid}.title{font-size:14px;letter-spacing:-.01em}.subtitle{color:#817570;font-size:9px}
 .headerStatus{display:flex;align-items:center;gap:6px;color:#6f635f;font-size:10px;font-weight:700}.headerStatus span{width:7px;height:7px;border-radius:50%;background:#2c8b6e;box-shadow:0 0 0 4px rgba(44,139,110,.1)}
 .dashboard{min-height:0;width:min(1360px,calc(100% - 44px));height:100%;margin:0 auto;padding:16px 0 18px}
-@media(max-width:1100px),(max-height:720px){.mainContainer{height:auto;min-height:100vh;overflow:visible}.dashboard{height:auto;min-height:760px}}
+@media(max-width:780px){.mainContainer{height:auto;min-height:100vh;overflow:visible}.dashboard{height:auto;min-height:760px}}
+@media(min-width:781px) and (max-height:760px){.mainContainer{grid-template-rows:56px minmax(0,1fr)}.dashboard{padding:10px 0 12px}}
 @media(max-width:600px){.header{padding:0 14px}.subtitle,.headerStatus{display:none}.dashboard{width:calc(100% - 24px);padding-block:12px}}
