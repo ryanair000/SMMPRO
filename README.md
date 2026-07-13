@@ -12,6 +12,12 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+Run the durable publishing migration before the first deployment:
+
+```bash
+npm run db:migrate
+```
+
 ## Refresh Meta Tokens
 
 Meta short-lived user tokens must be exchanged with the matching Meta App ID and App Secret.
@@ -77,6 +83,13 @@ node get-long-lived-tokens.js --skip-instagram
 ## Instagram Publishing Note
 
 Instagram Content Publishing requires a connected Instagram Business or Creator account and a publicly reachable image URL. Direct multipart file uploads work for Facebook Photos, but not for Instagram publishing.
+
+## Socio Publishing Contract
+
+`POST /api/post` accepts ordered, repeated `imageUrls` form fields and an optional
+`idempotencyKey`. Two to ten URLs are published as a native Facebook multi-photo
+post or Instagram carousel. Completed idempotency keys replay their stored result
+instead of creating a duplicate provider post.
 
 ## Deploy
 

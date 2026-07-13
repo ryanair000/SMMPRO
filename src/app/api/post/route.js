@@ -1,5 +1,17 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import {
+  beginIdempotentPublish,
+  completeIdempotentPublish,
+  failIdempotentPublish
+} from '@/lib/idempotency';
+import {
+  collectImageUrls,
+  getPublishMode,
+  MAX_CAROUSEL_ITEMS,
+  MIN_CAROUSEL_ITEMS,
+  validatePublicImageUrls
+} from '@/lib/publishRequest';
 import { assertContentLength, rateLimit } from '@/lib/rateLimit';
 import { SOCIAL_ACCOUNTS, getAccountCredentials } from '@/lib/socialAccounts';
 import { uploadPublicImage } from '@/lib/publicImage';
@@ -8,11 +20,9 @@ const MAX_FORM_BYTES = 25 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_MESSAGE_LENGTH = 2200;
 const MIN_SCHEDULE_DELAY_SECONDS = 10 * 60;
-const MIN_CAROUSEL_ITEMS = 2;
-const MAX_CAROUSEL_ITEMS = 10;
 
-function jsonError(message, status, details = null) {
-  return NextResponse.json({ error: message, details }, { status });
+function jsonError(message, status, details = null, headers = undefined) {
+  return NextResponse.json({ error: message, details }, { status, headers });
 }
 
 function graphUrl(path) {
@@ -22,7 +32,6 @@ function graphUrl(path) {
 
 async function readFacebookResponse(response) {
   const text = await response.text();
-
   try {
     return text ? JSON.parse(text) : {};
   } catch {
@@ -31,24 +40,19 @@ async function readFacebookResponse(response) {
 }
 
 async function postToFacebook(endpoint, formData, target) {
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    body: formData
-  });
+  const response = await fetch(endpoint, { method: 'POST', body: formData });
   const data = await readFacebookResponse(response);
-
   if (!response.ok || data.error) {
-    const message = data.error?.message || `Facebook ${target} request failed`;
-    const code = data.error?.code;
-    const type = data.error?.type;
-
     return {
       ok: false,
-      error: `${target} Error: ${message}`,
-      details: { code, type, status: response.status }
+      error: `${target} Error: ${data.error?.message || `HTTP ${response.status}`}`,
+      details: {
+        code: data.error?.code,
+        type: data.error?.type,
+        status: response.status
+      }
     };
   }
-
   return { ok: true, data };
 }
 
@@ -60,37 +64,33 @@ async function getInstagramContainerStatus(creationId, accessToken) {
   const url = new URL(graphUrl(`/${creationId}`));
   url.searchParams.set('fields', 'status_code,status');
   url.searchParams.set('access_token', accessToken);
-
   const response = await fetch(url);
   const data = await readFacebookResponse(response);
 
   if (!response.ok || data.error) {
-    const message = data.error?.message || 'Instagram container status request failed';
-    return { ok: false, error: `Instagram Error: ${message}`, details: { status: response.status } };
+    return {
+      ok: false,
+      error: `Instagram Error: ${data.error?.message || 'container status request failed'}`,
+      details: { status: response.status }
+    };
   }
-
   return { ok: true, data };
 }
 
 async function waitForInstagramContainer(creationId, accessToken) {
   for (let attempt = 0; attempt < 12; attempt += 1) {
-    const statusResult = await getInstagramContainerStatus(creationId, accessToken);
-    if (!statusResult.ok) return statusResult;
-
-    const statusCode = statusResult.data.status_code;
-    if (statusCode === 'FINISHED') return { ok: true, data: statusResult.data };
-
-    if (statusCode === 'ERROR' || statusCode === 'EXPIRED') {
+    const result = await getInstagramContainerStatus(creationId, accessToken);
+    if (!result.ok) return result;
+    if (result.data.status_code === 'FINISHED') return result;
+    if (['ERROR', 'EXPIRED'].includes(result.data.status_code)) {
       return {
         ok: false,
-        error: `Instagram Error: media container ${statusCode.toLowerCase()}`,
-        details: statusResult.data
+        error: `Instagram Error: media container ${result.data.status_code.toLowerCase()}`,
+        details: result.data
       };
     }
-
     await sleep(2500);
   }
-
   return {
     ok: false,
     error: 'Instagram Error: media container was not ready before timeout',
@@ -99,306 +99,341 @@ async function waitForInstagramContainer(creationId, accessToken) {
 }
 
 async function postToInstagram({ igUserId, accessToken, caption, imageUrl }) {
-  const createFormData = new FormData();
-  createFormData.append('image_url', imageUrl);
-  if (caption) createFormData.append('caption', caption);
-  createFormData.append('access_token', accessToken);
+  const createForm = new FormData();
+  createForm.append('image_url', imageUrl);
+  if (caption) createForm.append('caption', caption);
+  createForm.append('access_token', accessToken);
+  const created = await postToFacebook(graphUrl(`/${igUserId}/media`), createForm, 'Instagram');
+  if (!created.ok) return created;
 
-  const createResult = await postToFacebook(
-    graphUrl(`/${igUserId}/media`),
-    createFormData,
-    'Instagram'
-  );
-
-  if (!createResult.ok) {
-    return createResult;
-  }
-
-  const creationId = createResult.data.id;
-  const readyResult = await waitForInstagramContainer(creationId, accessToken);
-  if (!readyResult.ok) return readyResult;
-
-  const publishFormData = new FormData();
-  publishFormData.append('creation_id', creationId);
-  publishFormData.append('access_token', accessToken);
-
-  return postToFacebook(
+  const ready = await waitForInstagramContainer(created.data.id, accessToken);
+  if (!ready.ok) return ready;
+  const publishForm = new FormData();
+  publishForm.append('creation_id', created.data.id);
+  publishForm.append('access_token', accessToken);
+  const published = await postToFacebook(
     graphUrl(`/${igUserId}/media_publish`),
-    publishFormData,
+    publishForm,
     'Instagram'
   );
+  if (!published.ok) return published;
+  return { ok: true, data: { ...published.data, containerId: created.data.id } };
 }
 
-async function postCarouselToInstagram({ igUserId, accessToken, caption, items }) {
+async function postCarouselToInstagram({ igUserId, accessToken, caption, imageUrls }) {
   const childIds = [];
-
-  for (let index = 0; index < items.length; index += 1) {
-    const childFormData = new FormData();
-    childFormData.append('image_url', items[index].imageUrl);
-    childFormData.append('is_carousel_item', 'true');
-    childFormData.append('access_token', accessToken);
-
-    const childResult = await postToFacebook(
+  for (let index = 0; index < imageUrls.length; index += 1) {
+    const form = new FormData();
+    form.append('image_url', imageUrls[index]);
+    form.append('is_carousel_item', 'true');
+    form.append('access_token', accessToken);
+    const child = await postToFacebook(
       graphUrl(`/${igUserId}/media`),
-      childFormData,
+      form,
       `Instagram carousel item ${index + 1}`
     );
-    if (!childResult.ok) return childResult;
-
-    const readyResult = await waitForInstagramContainer(childResult.data.id, accessToken);
-    if (!readyResult.ok) return readyResult;
-    childIds.push(childResult.data.id);
+    if (!child.ok) return child;
+    const ready = await waitForInstagramContainer(child.data.id, accessToken);
+    if (!ready.ok) return ready;
+    childIds.push(child.data.id);
   }
 
-  const carouselFormData = new FormData();
-  carouselFormData.append('media_type', 'CAROUSEL');
-  carouselFormData.append('children', childIds.join(','));
-  if (caption) carouselFormData.append('caption', caption);
-  carouselFormData.append('access_token', accessToken);
-
-  const carouselResult = await postToFacebook(
+  const carouselForm = new FormData();
+  carouselForm.append('media_type', 'CAROUSEL');
+  carouselForm.append('children', childIds.join(','));
+  if (caption) carouselForm.append('caption', caption);
+  carouselForm.append('access_token', accessToken);
+  const carousel = await postToFacebook(
     graphUrl(`/${igUserId}/media`),
-    carouselFormData,
+    carouselForm,
     'Instagram carousel'
   );
-  if (!carouselResult.ok) return carouselResult;
+  if (!carousel.ok) return carousel;
 
-  const readyResult = await waitForInstagramContainer(carouselResult.data.id, accessToken);
-  if (!readyResult.ok) return readyResult;
-
-  const publishFormData = new FormData();
-  publishFormData.append('creation_id', carouselResult.data.id);
-  publishFormData.append('access_token', accessToken);
-
-  return postToFacebook(
+  const ready = await waitForInstagramContainer(carousel.data.id, accessToken);
+  if (!ready.ok) return ready;
+  const publishForm = new FormData();
+  publishForm.append('creation_id', carousel.data.id);
+  publishForm.append('access_token', accessToken);
+  const published = await postToFacebook(
     graphUrl(`/${igUserId}/media_publish`),
-    publishFormData,
+    publishForm,
     'Instagram carousel'
   );
+  if (!published.ok) return published;
+  return {
+    ok: true,
+    data: { ...published.data, containerId: carousel.data.id, childIds }
+  };
+}
+
+async function postCarouselToFacebook({ pageId, accessToken, caption, imageUrls, scheduledTime }) {
+  const mediaIds = [];
+  for (let index = 0; index < imageUrls.length; index += 1) {
+    const photoForm = new FormData();
+    photoForm.append('url', imageUrls[index]);
+    photoForm.append('published', 'false');
+    photoForm.append('access_token', accessToken);
+    const photo = await postToFacebook(
+      graphUrl(`/${pageId}/photos`),
+      photoForm,
+      `Facebook carousel item ${index + 1}`
+    );
+    if (!photo.ok) return photo;
+    mediaIds.push(photo.data.id);
+  }
+
+  const feedForm = new FormData();
+  if (caption) feedForm.append('message', caption);
+  mediaIds.forEach((mediaId, index) => {
+    feedForm.append(`attached_media[${index}]`, JSON.stringify({ media_fbid: mediaId }));
+  });
+  if (scheduledTime) {
+    feedForm.append('published', 'false');
+    feedForm.append('scheduled_publish_time', scheduledTime);
+  }
+  feedForm.append('access_token', accessToken);
+  const published = await postToFacebook(
+    graphUrl(`/${pageId}/feed`),
+    feedForm,
+    'Facebook carousel'
+  );
+  if (!published.ok) return published;
+  return { ok: true, data: { ...published.data, mediaIds } };
+}
+
+function isImageFile(value) {
+  return value && typeof value === 'object' && typeof value.arrayBuffer === 'function';
 }
 
 export async function POST(request) {
+  let claimedKey = '';
   try {
     const authError = requireAuth(request);
     if (authError) return authError;
-
     const sizeError = assertContentLength(request, MAX_FORM_BYTES);
     if (sizeError) return sizeError;
-
-    const rateLimitError = rateLimit(request, {
-      scope: 'post',
-      limit: 20,
-      windowMs: 60 * 1000
-    });
+    const rateLimitError = rateLimit(request, { scope: 'post', limit: 20, windowMs: 60_000 });
     if (rateLimitError) return rateLimitError;
 
     const formData = await request.formData();
     const message = formData.get('message')?.toString() || '';
-    const image = formData.get('image'); // This is a File object if present
-    const imageUrl = formData.get('imageUrl')?.toString().trim() || '';
-    const scheduledTime = formData.get('scheduledPublishTime'); // Unix timestamp (optional)
-    const requestedPublishFacebook = formData.get('publishFacebook') !== 'false';
-    const requestedPublishInstagram = formData.get('publishInstagram') !== 'false';
-    const publishMode = formData.get('publishMode') === 'carousel' ? 'carousel' : 'individual';
+    const candidateImage = formData.get('image');
+    const image = isImageFile(candidateImage) ? candidateImage : null;
+    const scheduledTime = formData.get('scheduledPublishTime')?.toString() || '';
+    const requestedFacebook = formData.get('publishFacebook') !== 'false';
+    const requestedInstagram = formData.get('publishInstagram') !== 'false';
     const accountId = formData.get('accountId')?.toString() || 'chezahub';
-    let carouselItems = [];
-
-    if (publishMode === 'carousel') {
-      try {
-        const parsedItems = JSON.parse(formData.get('carouselItems')?.toString() || '[]');
-        carouselItems = Array.isArray(parsedItems) ? parsedItems : [];
-      } catch {
-        return jsonError('Carousel items must be valid JSON.', 400);
-      }
+    const idempotencyKey = formData.get('idempotencyKey')?.toString().trim() || '';
+    let imageUrls;
+    try {
+      imageUrls = collectImageUrls(formData);
+    } catch (error) {
+      return jsonError(error.message, 400);
     }
+    const publishMode = getPublishMode(formData, imageUrls);
 
     if (!SOCIAL_ACCOUNTS.some(account => account.id === accountId)) {
       return jsonError('Unknown social account.', 400);
     }
-
     const { account, credentials } = getAccountCredentials(accountId);
-    const publishFacebook = publishMode === 'carousel'
-      ? false
-      : requestedPublishFacebook && account.platforms?.facebook !== false;
-    const publishInstagram = requestedPublishInstagram && account.platforms?.instagram !== false;
-
+    const publishFacebook = requestedFacebook && account.platforms?.facebook !== false;
+    const publishInstagram = requestedInstagram && account.platforms?.instagram !== false;
     if (message.length > MAX_MESSAGE_LENGTH) {
       return jsonError(`Caption must be ${MAX_MESSAGE_LENGTH} characters or fewer.`, 400);
     }
-
-    if (!message.trim() && !image && !imageUrl && carouselItems.length === 0) {
+    if (!message.trim() && !image && imageUrls.length === 0) {
       return jsonError('Add a caption or image before publishing.', 400);
     }
-
     if (!publishFacebook && !publishInstagram) {
       return jsonError('Choose at least one publishing target.', 400);
     }
-
-    if (image) {
-      if (!image.type?.startsWith('image/')) {
-        return jsonError('Uploaded file must be an image.', 400);
-      }
-
-      if (image.size > MAX_IMAGE_BYTES) {
-        return jsonError('Uploaded image must be 10 MB or smaller.', 413);
-      }
+    if (image && (!image.type?.startsWith('image/') || image.size > MAX_IMAGE_BYTES)) {
+      return jsonError('Uploaded image must be an image no larger than 10 MB.', 413);
     }
-
-    if (imageUrl) {
-      try {
-        const parsedImageUrl = new URL(imageUrl);
-        if (!['http:', 'https:'].includes(parsedImageUrl.protocol)) {
-          return jsonError('Image URL must start with http:// or https://.', 400);
-        }
-      } catch {
-        return jsonError('Image URL is not valid.', 400);
-      }
+    if (image && imageUrls.length > 1) {
+      return jsonError('Use public image URLs for multi-image publishing.', 400);
     }
-
-    if (publishMode === 'carousel') {
-      if (!publishInstagram) {
-        return jsonError('Instagram must be enabled for carousel publishing.', 400);
-      }
-
-      if (carouselItems.length < MIN_CAROUSEL_ITEMS || carouselItems.length > MAX_CAROUSEL_ITEMS) {
-        return jsonError(`Instagram carousels require ${MIN_CAROUSEL_ITEMS}-${MAX_CAROUSEL_ITEMS} images.`, 400);
-      }
-
-      const invalidCarouselItem = carouselItems.find(item => {
-        if (!item || typeof item.imageUrl !== 'string') return true;
-        try {
-          const url = new URL(item.imageUrl);
-          return !['http:', 'https:'].includes(url.protocol);
-        } catch {
-          return true;
-        }
+    try {
+      validatePublicImageUrls(imageUrls, {
+        requireHttps: publishInstagram && publishMode === 'carousel'
       });
-      if (invalidCarouselItem) {
-        return jsonError('Every carousel image needs a valid public HTTPS URL.', 400);
-      }
+    } catch (error) {
+      return jsonError(error.message, 400);
     }
-
+    if (publishMode === 'carousel' &&
+        (imageUrls.length < MIN_CAROUSEL_ITEMS || imageUrls.length > MAX_CAROUSEL_ITEMS)) {
+      return jsonError(
+        `Carousels require ${MIN_CAROUSEL_ITEMS}-${MAX_CAROUSEL_ITEMS} ordered images.`,
+        400
+      );
+    }
     if (scheduledTime) {
       const scheduleUnix = Number(scheduledTime);
-      const nowUnix = Date.now() / 1000;
-
-      if (!Number.isFinite(scheduleUnix)) {
-        return jsonError('Scheduled time must be a Unix timestamp.', 400);
-      }
-
-      if (scheduleUnix < nowUnix + MIN_SCHEDULE_DELAY_SECONDS) {
-        return jsonError('Scheduled time must be at least 10 minutes in the future.', 400);
+      if (!Number.isFinite(scheduleUnix) ||
+          scheduleUnix < Date.now() / 1000 + MIN_SCHEDULE_DELAY_SECONDS) {
+        return jsonError('Scheduled time must be a Unix timestamp at least 10 minutes ahead.', 400);
       }
     }
 
-    const PAGE_ID = credentials.pageId;
-    const PAGE_TOKEN = credentials.pageToken;
-    const USER_TOKEN = credentials.userToken;
-    const IG_USER_ID = credentials.igUserId;
-
-    if (publishFacebook && (!PAGE_ID || !PAGE_TOKEN || PAGE_ID === 'your_page_id_here')) {
-      return jsonError(`${account.name} Facebook page credentials are not configured in .env.local`, 500);
+    const { pageId, pageToken, userToken, igUserId } = credentials;
+    if (publishFacebook && (!pageId || !pageToken || pageId === 'your_page_id_here')) {
+      return jsonError(`${account.name} Facebook credentials are not configured.`, 500);
     }
+    if (publishInstagram && (!igUserId || !userToken)) {
+      return jsonError(`${account.name} Instagram credentials are not configured.`, 500);
+    }
+
+    const requestDescriptor = {
+      accountId,
+      message,
+      imageUrls,
+      hasUploadedImage: Boolean(image),
+      publishFacebook,
+      publishInstagram,
+      scheduledTime,
+      publishMode
+    };
+    const idempotency = await beginIdempotentPublish(idempotencyKey, requestDescriptor);
+    if (idempotency.mode === 'conflict') {
+      return jsonError('Idempotency key was already used for a different request.', 409);
+    }
+    if (idempotency.mode === 'in_progress') {
+      return jsonError(
+        'A request with this idempotency key is already publishing.',
+        503,
+        null,
+        { 'Retry-After': '30' }
+      );
+    }
+    if (idempotency.mode === 'replay') {
+      return NextResponse.json(idempotency.response, {
+        headers: { 'X-Idempotent-Replay': 'true' }
+      });
+    }
+    claimedKey = idempotency.mode === 'claimed' ? idempotency.key : '';
 
     const results = [];
-    let effectiveImageUrl = imageUrl; // may be updated after FB post
-
+    let effectiveImageUrl = imageUrls[0] || '';
     if (publishInstagram && !publishFacebook && !effectiveImageUrl && image) {
-      try {
-        effectiveImageUrl = await uploadPublicImage(image);
-      } catch (error) {
-        return jsonError(error.message || 'Could not prepare the image for Instagram.', 502);
-      }
+      effectiveImageUrl = await uploadPublicImage(image);
     }
 
     if (publishFacebook) {
-      const endpoint = image || effectiveImageUrl
-        ? graphUrl(`/${PAGE_ID}/photos`)
-        : graphUrl(`/${PAGE_ID}/feed`);
-
-      const fbFormData = new FormData();
-      if (message) fbFormData.append('message', message);
-      fbFormData.append('access_token', PAGE_TOKEN);
-
-      if (scheduledTime) {
-        fbFormData.append('published', 'false');
-        fbFormData.append('scheduled_publish_time', scheduledTime);
+      let facebookResult;
+      if (publishMode === 'carousel') {
+        facebookResult = await postCarouselToFacebook({
+          pageId,
+          accessToken: pageToken,
+          caption: message,
+          imageUrls,
+          scheduledTime
+        });
+      } else {
+        const endpoint = image || effectiveImageUrl
+          ? graphUrl(`/${pageId}/photos`)
+          : graphUrl(`/${pageId}/feed`);
+        const pageForm = new FormData();
+        if (message) pageForm.append('message', message);
+        pageForm.append('access_token', pageToken);
+        if (scheduledTime) {
+          pageForm.append('published', 'false');
+          pageForm.append('scheduled_publish_time', scheduledTime);
+        }
+        if (image) pageForm.append('source', image);
+        else if (effectiveImageUrl) pageForm.append('url', effectiveImageUrl);
+        facebookResult = await postToFacebook(endpoint, pageForm, 'Facebook Page');
       }
 
-      if (image) {
-        fbFormData.append('source', image);
-      } else if (effectiveImageUrl) {
-        fbFormData.append('url', effectiveImageUrl);
+      if (!facebookResult.ok) {
+        const body = { error: facebookResult.error, details: facebookResult.details };
+        await failIdempotentPublish(claimedKey, body);
+        return NextResponse.json(body, { status: 502 });
       }
+      results.push({
+        target: `${account.name} Facebook${publishMode === 'carousel' ? ' Carousel' : ''}`,
+        id: facebookResult.data.id,
+        mediaIds: facebookResult.data.mediaIds,
+        status: 'Success'
+      });
 
-      const pageResult = await postToFacebook(endpoint, fbFormData, 'Page');
-      if (!pageResult.ok) {
-        return jsonError(pageResult.error, 502, pageResult.details);
-      }
-
-      results.push({ target: `${account.name} Facebook`, id: pageResult.data.id, status: 'Success' });
-
-      // If a file was uploaded with no manual imageUrl, auto-fetch the public CDN URL
-      // from Facebook so we can reuse it for Instagram — no manual URL input needed.
-      if (image && !effectiveImageUrl && pageResult.data.id && publishInstagram && IG_USER_ID && !scheduledTime) {
+      if (image && !effectiveImageUrl && facebookResult.data.id && publishInstagram && !scheduledTime) {
         try {
-          const photoId = pageResult.data.id;
-          const photoRes = await fetch(
-            `${graphUrl(`/${photoId}`)}?fields=images&access_token=${PAGE_TOKEN}`
-          );
-          const photoData = await photoRes.json();
-          // images is sorted largest-first; pick the first (highest resolution)
-          const cdnUrl = photoData?.images?.[0]?.source;
-          if (cdnUrl) {
-            effectiveImageUrl = cdnUrl;
-          }
+          const photoUrl = new URL(graphUrl(`/${facebookResult.data.id}`));
+          photoUrl.searchParams.set('fields', 'images');
+          photoUrl.searchParams.set('access_token', pageToken);
+          const photoResponse = await fetch(photoUrl);
+          const photoData = await photoResponse.json();
+          effectiveImageUrl = photoData?.images?.[0]?.source || '';
         } catch {
-          // If we can't get the CDN URL, Instagram will be silently skipped below
+          effectiveImageUrl = '';
         }
       }
     }
 
     if (publishInstagram) {
-      if (!IG_USER_ID) {
-        results.push({ target: `${account.name} Instagram`, status: `Failed: ${account.env.igUserId} is missing` });
-      } else if (scheduledTime) {
-        results.push({ target: `${account.name} Instagram`, status: 'Skipped: Instagram scheduling is not supported yet. Post now to publish on Instagram.' });
-        // Silent skip — Instagram scheduling not supported
+      if (scheduledTime) {
+        results.push({
+          target: `${account.name} Instagram`,
+          status: 'Failed: Instagram scheduling is handled by Socio, not SMMPRO.'
+        });
       } else if (publishMode !== 'carousel' && !effectiveImageUrl) {
-        results.push({ target: `${account.name} Instagram`, status: 'Failed: Instagram needs a public image URL. Add one in the Instagram URL field, or post to Facebook first and try again.' });
-        // Silent skip — no image URL available (text-only post or CDN fetch failed)
-      } else if (!USER_TOKEN) {
-        results.push({ target: `${account.name} Instagram`, status: `Failed: ${account.env.userToken} is missing - required for Instagram posting` });
+        results.push({
+          target: `${account.name} Instagram`,
+          status: 'Failed: Instagram needs a public image URL.'
+        });
       } else {
-        // Instagram Graph API requires the USER access token, not the PAGE token
         const instagramResult = publishMode === 'carousel'
           ? await postCarouselToInstagram({
-              igUserId: IG_USER_ID,
-              accessToken: USER_TOKEN,
+              igUserId,
+              accessToken: userToken,
               caption: message,
-              items: carouselItems
+              imageUrls
             })
           : await postToInstagram({
-              igUserId: IG_USER_ID,
-              accessToken: USER_TOKEN,
+              igUserId,
+              accessToken: userToken,
               caption: message,
               imageUrl: effectiveImageUrl
             });
-
-        if (!instagramResult.ok) {
-          results.push({ target: `${account.name} Instagram`, status: `Failed: ${instagramResult.error}` });
-        } else {
-          results.push({
-            target: `${account.name} Instagram${publishMode === 'carousel' ? ' Carousel' : ''}`,
-            id: instagramResult.data.id,
-            status: 'Success'
-          });
-        }
+        results.push(instagramResult.ok
+          ? {
+              target: `${account.name} Instagram${publishMode === 'carousel' ? ' Carousel' : ''}`,
+              id: instagramResult.data.id,
+              containerId: instagramResult.data.containerId,
+              mediaIds: instagramResult.data.childIds,
+              status: 'Success'
+            }
+          : {
+              target: `${account.name} Instagram`,
+              status: `Failed: ${instagramResult.error}`,
+              details: instagramResult.details
+            });
       }
     }
 
-    return NextResponse.json({ success: true, account: account.id, mode: publishMode, results });
+    const failedResult = results.find(result => result.status?.startsWith('Failed:'));
+    if (idempotencyKey && results.length === 1 && failedResult) {
+      const body = {
+        error: failedResult.status.replace(/^Failed:\s*/, ''),
+        account: account.id,
+        mode: publishMode,
+        results
+      };
+      await failIdempotentPublish(claimedKey, body);
+      return NextResponse.json(body, { status: 502 });
+    }
+
+    const body = { success: true, account: account.id, mode: publishMode, results };
+    await completeIdempotentPublish(claimedKey, body);
+    return NextResponse.json(body);
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const body = { error: error instanceof Error ? error.message : 'Publishing failed.' };
+    try {
+      await failIdempotentPublish(claimedKey, body);
+    } catch {
+      // Preserve the original publishing error if persistence is also unavailable.
+    }
+    return NextResponse.json(body, { status: 500 });
   }
 }
