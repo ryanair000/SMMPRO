@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { SOCIAL_ACCOUNTS } from '@/lib/socialAccounts';
+import ModernComposerView from './ModernComposerView';
 import styles from './PostComposer.module.css';
 
 export default function PostComposer() {
@@ -245,7 +246,9 @@ export default function PostComposer() {
 
     let successCount = 0;
 
-    for (let i = 0; i < queue.length; i++) {
+    const indexesToGenerate = carouselMode ? [0] : queue.map((_, index) => index);
+
+    for (const i of indexesToGenerate) {
       const item = queue[i];
       if (item.caption) continue;
 
@@ -253,6 +256,7 @@ export default function PostComposer() {
       updateQueueItem(i, { status: 'generating' });
 
       try {
+        if (!item.file) throw new Error('Re-add the local image before generating its caption.');
         const base64 = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.readAsDataURL(item.file);
@@ -568,6 +572,24 @@ export default function PostComposer() {
       toast.error('Could not save the draft in this browser.');
     }
   };
+
+  if (styles.composer) {
+    return <ModernComposerView fileInputRef={fileInputRef} model={{
+      queue, selectedIndex, setSelectedIndex, selectedAccount, selectedAccountId,
+      publishFacebook, setPublishFacebook, publishInstagram, setPublishInstagram,
+      publishMode, scheduleTime, setScheduleTime, spreadInterval, setSpreadInterval,
+      recurrenceFrequency, setRecurrenceFrequency, recurrenceCount, setRecurrenceCount,
+      lastRunSummary, isGenerating, isSubmitting, isDragging, setIsDragging,
+      draggedQueueItemId, setDraggedQueueItemId, maxLength,
+      facebookEnabled, instagramEnabled, facebookTargetActive, instagramTargetActive,
+      carouselMode, canSubmit, publishLabel, targetLabel, timingLabel,
+      recurrenceEnabled, totalScheduledJobs, validImageUrl, needsPublicInstagramUrl,
+      carouselCountValid, carouselMediaMissing, carouselUrlInvalid, scheduleIsTooSoon,
+      needsScheduleForRecurrence, handleAccountChange, handlePublishModeChange,
+      handleFilesChange, handleDrop, updateQueueItem, handleGenerateAll, handleSubmitAll,
+      removeItem, moveQueueItem, handleQueueDragStart, handleQueueDrop, handleSaveDraft
+    }} />;
+  }
 
   return (
     <div className={styles.splitGrid}>
