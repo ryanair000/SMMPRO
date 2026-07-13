@@ -96,6 +96,9 @@ export default function PostComposer() {
       setPublishInstagram(true);
       setScheduleTime('');
       setRecurrenceFrequency('none');
+    } else {
+      setPublishFacebook(selectedAccount.platforms?.facebook !== false);
+      setPublishInstagram(selectedAccount.platforms?.instagram !== false);
     }
   };
 
@@ -608,7 +611,7 @@ export default function PostComposer() {
               onChange={e => setPublishFacebook(e.target.checked)}
               disabled={isSubmitting || !facebookEnabled || carouselMode}
             />
-            Facebook Page{!facebookEnabled ? ' (Unavailable)' : carouselMode ? ' (Individual mode only)' : ''}
+            Facebook Page{!facebookEnabled ? ' (Unavailable)' : carouselMode ? ' (Independent posts only)' : ''}
           </label>
           <label>
             <input
@@ -635,7 +638,7 @@ export default function PostComposer() {
                   disabled={isSubmitting}
                 />
                 <span>
-                  <strong>Individual posts</strong>
+                  <strong>Independent posts</strong>
                   <small>Each image publishes separately with its own caption.</small>
                 </span>
               </label>
@@ -656,7 +659,7 @@ export default function PostComposer() {
             </div>
             {carouselMode && (
               <p className={styles.publishModeHint}>
-                Post 1&apos;s caption will be the shared carousel caption. Use Individual posts when every image needs its own caption.
+                Post 1&apos;s caption will be the shared carousel caption. Use Independent posts when every image needs its own caption.
               </p>
             )}
           </div>
@@ -980,7 +983,7 @@ export default function PostComposer() {
           </div>
           <div>
             <dt>Format</dt>
-            <dd>{carouselMode ? 'Instagram carousel' : 'Individual posts'}</dd>
+            <dd>{carouselMode ? 'Instagram carousel' : 'Independent posts'}</dd>
           </div>
           <div>
             <dt>Timing</dt>
