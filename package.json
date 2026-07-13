@@ -7,9 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --test tests/*.test.js",
+    "db:migrate": "node --env-file=.env.local scripts/migrate.mjs",
     "tokens:refresh": "node get-long-lived-tokens.js"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "next": "16.2.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",
