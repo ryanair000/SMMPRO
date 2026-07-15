@@ -62,7 +62,7 @@ export default function ModernComposerView({ model: m, fileInputRef }) {
         <div className={styles.setupControls}>
           <Control label="Brand">{SOCIAL_ACCOUNTS.map(account => <button key={account.id} type="button"
             className={m.selectedAccountId === account.id ? styles.active : ''} onClick={() => m.handleAccountChange(account.id)}
-            disabled={m.isSubmitting || m.isGenerating}><i style={{ '--account-accent': account.accent }}>{account.shortName}</i>{account.name}</button>)}</Control>
+            disabled={m.isSubmitting}><i style={{ '--account-accent': account.accent }}>{account.shortName}</i>{account.name}</button>)}</Control>
           <Control label="Channels">
             <button type="button" className={m.facebookTargetActive ? styles.active : ''} onClick={() => m.setPublishFacebook(value => !value)}
               disabled={!m.facebookEnabled || m.carouselMode || m.isSubmitting}>Facebook</button>
@@ -156,8 +156,16 @@ export default function ModernComposerView({ model: m, fileInputRef }) {
         <footer className={styles.actionBar}>
           <div className={styles.campaignSummary}><span style={{ '--account-accent': m.selectedAccount.accent }}>{m.selectedAccount.shortName}</span><div>
             <strong>{m.selectedAccount.name} · {m.targetLabel}</strong><p>{m.queue.length} image{m.queue.length === 1 ? '' : 's'} · {m.carouselMode ? '1 carousel' : m.queue.length + ' separate post' + (m.queue.length === 1 ? '' : 's')} · {m.timingLabel}</p></div></div>
-          <div className={styles.actionStatus}>{warnings.length > 0 && m.queue.length > 0 && <span>{warnings.length} to review</span>}</div>
-          <button type="button" className={styles.saveButton} onClick={m.handleSaveDraft} disabled={m.isSubmitting || m.isGenerating}>Save draft</button>
+          <div className={styles.actionStatus}><span>{m.draftStatus === 'saving'
+            ? 'Saving draft...'
+            : m.draftStatus === 'saved'
+              ? 'Draft auto-saved'
+              : m.draftStatus === 'error'
+                ? 'Draft not saved'
+                : warnings.length > 0 && m.queue.length > 0
+                  ? warnings.length + ' to review'
+                  : ''}</span></div>
+          <button type="button" className={styles.saveButton} onClick={m.handleSaveDraft} disabled={m.isSubmitting}>Save draft</button>
           <button type="button" className={styles.publishButton} onClick={m.handleSubmitAll} disabled={!m.canSubmit} title={m.publishLabel}>
             {m.isSubmitting ? 'Processing...' : !m.queue.length ? 'Add images' : m.carouselMode ? 'Publish carousel' : m.scheduleTime || m.recurrenceEnabled ? 'Schedule posts' : 'Publish posts'}</button>
         </footer>

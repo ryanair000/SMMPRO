@@ -2,6 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
+import {
+  CAMPAIGN_DRAFT_VERSION,
+  LEGACY_DRAFT_STORAGE_KEY,
+  createCampaignDraft,
+  deleteCampaignDraft,
+  loadCampaignDraft,
+  saveCampaignDraft
+} from '@/lib/campaignDraft';
 import { SOCIAL_ACCOUNTS } from '@/lib/socialAccounts';
 import ModernComposerView from './ModernComposerView';
 import styles from './PostComposer.module.css';
@@ -22,11 +30,14 @@ export default function PostComposer() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [draggedQueueItemId, setDraggedQueueItemId] = useState(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftStatus, setDraftStatus] = useState('idle');
 
   const fileInputRef = useRef(null);
   const queueRef = useRef([]);
+  const generationAbortRef = useRef(null);
+  const draftWriteRef = useRef(Promise.resolve());
   const maxLength = 2200;
-  const draftStorageKey = 'smm-pro-campaign-draft';
   const selectedAccount = SOCIAL_ACCOUNTS.find(account => account.id === selectedAccountId) || SOCIAL_ACCOUNTS[0];
   const selectedItem = queue[selectedIndex];
   const facebookEnabled = selectedAccount.platforms?.facebook !== false;
@@ -81,6 +92,17 @@ export default function PostComposer() {
 
   const handleAccountChange = (accountId) => {
     const nextAccount = SOCIAL_ACCOUNTS.find(account => account.id === accountId) || SOCIAL_ACCOUNTS[0];
+
+    if (isGenerating) {
+      generationAbortRef.current?.abort();
+      generationAbortRef.current = null;
+      setIsGenerating(false);
+      setQueue(previous => previous.map(item => item.status === 'generating'
+        ? { ...item, status: 'pending' }
+        : item));
+      toast('Caption writing stopped so the brand could be changed.');
+    }
+
     setSelectedAccountId(nextAccount.id);
     setPublishFacebook(nextAccount.platforms?.facebook !== false);
     setPublishInstagram(nextAccount.platforms?.instagram !== false);
@@ -156,37 +178,56 @@ export default function PostComposer() {
   }, [queue]);
 
   useEffect(() => {
-    try {
-      const savedDraft = JSON.parse(localStorage.getItem(draftStorageKey) || 'null');
-      if (!savedDraft || savedDraft.version !== 1) return;
+    let cancelled = false;
 
-      const draftAccount = SOCIAL_ACCOUNTS.find(account => account.id === savedDraft.accountId);
-      if (draftAccount) setSelectedAccountId(draftAccount.id);
-      setPublishFacebook(savedDraft.publishFacebook !== false);
-      setPublishInstagram(savedDraft.publishInstagram !== false);
-      setPublishMode(savedDraft.publishMode === 'carousel' ? 'carousel' : 'individual');
-      setScheduleTime(savedDraft.scheduleTime || '');
-      setSpreadInterval(Number(savedDraft.spreadInterval) || 0);
-      setRecurrenceFrequency(['daily', 'weekly'].includes(savedDraft.recurrenceFrequency) ? savedDraft.recurrenceFrequency : 'none');
-      setRecurrenceCount(Number(savedDraft.recurrenceCount) || 7);
+    const restoreDraft = async () => {
+      setDraftStatus('loading');
 
-      const restorableItems = Array.isArray(savedDraft.items)
-        ? savedDraft.items.filter(item => /^https?:\/\/\S+$/i.test(item.imageUrl || '')).map(item => ({
-          id: Math.random().toString(36).slice(2, 11),
-          file: null,
-          objectUrl: '',
-          caption: item.caption || '',
-          imageUrl: item.imageUrl,
-          status: 'pending',
-          name: item.name || 'Remote image'
-        }))
-        : [];
+      try {
+        const savedDraft = await loadCampaignDraft();
+        if (cancelled || !savedDraft || ![1, CAMPAIGN_DRAFT_VERSION].includes(savedDraft.version)) return;
 
-      if (restorableItems.length) setQueue(restorableItems);
-      toast.success('Your saved campaign draft was restored.');
-    } catch {
-      localStorage.removeItem(draftStorageKey);
-    }
+        const draftAccount = SOCIAL_ACCOUNTS.find(account => account.id === savedDraft.accountId);
+        if (draftAccount) setSelectedAccountId(draftAccount.id);
+        setPublishFacebook(savedDraft.publishFacebook !== false);
+        setPublishInstagram(savedDraft.publishInstagram !== false);
+        setPublishMode(savedDraft.publishMode === 'carousel' ? 'carousel' : 'individual');
+        setScheduleTime(savedDraft.scheduleTime || '');
+        setSpreadInterval(Number(savedDraft.spreadInterval) || 0);
+        setRecurrenceFrequency(['daily', 'weekly'].includes(savedDraft.recurrenceFrequency) ? savedDraft.recurrenceFrequency : 'none');
+        setRecurrenceCount(Number(savedDraft.recurrenceCount) || 7);
+
+        const savedItems = Array.isArray(savedDraft.items) ? savedDraft.items : [];
+        const restorableItems = savedItems
+          .filter(item => item?.file || /^https?:\/\/\S+$/i.test(item?.imageUrl || ''))
+          .map(item => ({
+            id: Math.random().toString(36).slice(2, 11),
+            file: item.file || null,
+            objectUrl: item.file ? URL.createObjectURL(item.file) : '',
+            caption: item.caption || '',
+            imageUrl: item.imageUrl || '',
+            status: 'pending',
+            name: item.file?.name || item.name || 'Campaign image'
+          }));
+
+        if (restorableItems.length) setQueue(restorableItems);
+        const missingFileCount = savedItems.length - restorableItems.length;
+        toast.success(missingFileCount > 0
+          ? `Draft restored. Re-add ${missingFileCount} image file${missingFileCount === 1 ? '' : 's'} that the browser could not retain.`
+          : 'Your unfinished campaign was restored.');
+      } catch {
+        localStorage.removeItem(LEGACY_DRAFT_STORAGE_KEY);
+        setDraftStatus('error');
+      } finally {
+        if (!cancelled) {
+          setDraftReady(true);
+          setDraftStatus('idle');
+        }
+      }
+    };
+
+    void restoreDraft();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -205,6 +246,7 @@ export default function PostComposer() {
   }, [addFilesToQueue]);
 
   useEffect(() => () => {
+    generationAbortRef.current?.abort();
     queueRef.current.forEach(item => {
       if (item.objectUrl) URL.revokeObjectURL(item.objectUrl);
     });
@@ -243,6 +285,9 @@ export default function PostComposer() {
 
   const handleGenerateAll = async () => {
     if (queue.length === 0) return;
+    generationAbortRef.current?.abort();
+    const controller = new AbortController();
+    generationAbortRef.current = controller;
     setIsGenerating(true);
 
     let successCount = 0;
@@ -250,6 +295,7 @@ export default function PostComposer() {
     const indexesToGenerate = carouselMode ? [0] : queue.map((_, index) => index);
 
     for (const i of indexesToGenerate) {
+      if (controller.signal.aborted) break;
       const item = queue[i];
       if (item.caption) continue;
 
@@ -268,7 +314,8 @@ export default function PostComposer() {
         const res = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: base64, accountId: selectedAccount.id })
+          body: JSON.stringify({ imageBase64: base64, accountId: selectedAccount.id }),
+          signal: controller.signal
         });
         const data = await res.json();
 
@@ -277,13 +324,19 @@ export default function PostComposer() {
         updateQueueItem(i, { caption: data.caption, status: 'ready' });
         successCount++;
       } catch (err) {
+        if (err.name === 'AbortError' || controller.signal.aborted) break;
         toast.error(`Image ${i + 1}: ${err.message}`);
         updateQueueItem(i, { status: 'error' });
       }
     }
 
-    setIsGenerating(false);
-    toast.success(`Generated ${successCount} ${selectedAccount.name} captions.`);
+    if (generationAbortRef.current === controller) {
+      generationAbortRef.current = null;
+      setIsGenerating(false);
+      if (!controller.signal.aborted) {
+        toast.success(`Generated ${successCount} ${selectedAccount.name} captions.`);
+      }
+    }
   };
 
   const handleSubmitAll = async () => {
@@ -369,7 +422,7 @@ export default function PostComposer() {
           ok: result.status === 'Success'
         })));
         toast.success('Instagram carousel published successfully.', { id: toastId });
-        localStorage.removeItem(draftStorageKey);
+        void enqueueDraftWrite(() => deleteCampaignDraft());
         queue.forEach(item => {
           if (item.objectUrl) URL.revokeObjectURL(item.objectUrl);
         });
@@ -491,7 +544,7 @@ export default function PostComposer() {
       toast.error(`Finished with issues. ${successCount} posts fully succeeded; review the queue before retrying.`, { id: toastId });
     } else {
       toast.success(`Successfully processed ${successCount} posts.`, { id: toastId });
-      localStorage.removeItem(draftStorageKey);
+      void enqueueDraftWrite(() => deleteCampaignDraft());
       queue.forEach(item => {
         if (item.objectUrl) URL.revokeObjectURL(item.objectUrl);
       });
@@ -540,39 +593,89 @@ export default function PostComposer() {
     setDraggedQueueItemId(null);
   };
 
-  const handleSaveDraft = () => {
+  const enqueueDraftWrite = useCallback((operation) => {
+    const write = draftWriteRef.current
+      .catch(() => undefined)
+      .then(operation);
+    draftWriteRef.current = write;
+    return write;
+  }, []);
+
+  const persistDraft = useCallback(async ({ notify = false } = {}) => {
+    const draft = createCampaignDraft({
+      accountId: selectedAccount.id,
+      publishFacebook,
+      publishInstagram,
+      publishMode,
+      scheduleTime,
+      spreadInterval,
+      recurrenceFrequency,
+      recurrenceCount,
+      queue
+    });
+
+    setDraftStatus('saving');
     try {
-      const items = queue
-        .filter(item => /^https?:\/\/\S+$/i.test(item.imageUrl?.trim() || ''))
-        .map(item => ({
-          name: item.file?.name || item.name || 'Remote image',
-          caption: item.caption,
-          imageUrl: item.imageUrl.trim()
-        }));
-
-      localStorage.setItem(draftStorageKey, JSON.stringify({
-        version: 1,
-        accountId: selectedAccount.id,
-        publishFacebook,
-        publishInstagram,
-        publishMode,
-        scheduleTime,
-        spreadInterval,
-        recurrenceFrequency,
-        recurrenceCount,
-        items
-      }));
-
-      const localOnlyCount = queue.length - items.length;
-      if (localOnlyCount > 0) {
-        toast.success(`Draft settings saved. Re-add ${localOnlyCount} local image file${localOnlyCount === 1 ? '' : 's'} when you return.`);
-      } else {
-        toast.success('Campaign draft saved in this browser.');
+      const result = await enqueueDraftWrite(() => saveCampaignDraft(draft));
+      setDraftStatus('saved');
+      if (notify) {
+        toast.success(result.includesFiles
+          ? 'Campaign draft saved with its images.'
+          : 'Draft saved, but local images may need to be added again.');
       }
     } catch {
-      toast.error('Could not save the draft in this browser.');
+      setDraftStatus('error');
+      if (notify) toast.error('Could not save the draft in this browser.');
     }
+  }, [
+    enqueueDraftWrite,
+    publishFacebook,
+    publishInstagram,
+    publishMode,
+    queue,
+    recurrenceCount,
+    recurrenceFrequency,
+    scheduleTime,
+    selectedAccount.id,
+    spreadInterval
+  ]);
+
+  const handleSaveDraft = () => {
+    void persistDraft({ notify: true });
   };
+
+  useEffect(() => {
+    if (!draftReady) return;
+
+    if (!queue.length) {
+      setDraftStatus('idle');
+      void enqueueDraftWrite(() => deleteCampaignDraft());
+      return;
+    }
+
+    setDraftStatus('saving');
+    const timeoutId = window.setTimeout(() => {
+      void persistDraft();
+    }, 700);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [draftReady, enqueueDraftWrite, persistDraft, queue.length]);
+
+  useEffect(() => {
+    if (!draftReady || !queue.length) return;
+
+    const preserveDraft = () => { void persistDraft(); };
+    const preserveHiddenDraft = () => {
+      if (document.visibilityState === 'hidden') preserveDraft();
+    };
+
+    window.addEventListener('pagehide', preserveDraft);
+    document.addEventListener('visibilitychange', preserveHiddenDraft);
+    return () => {
+      window.removeEventListener('pagehide', preserveDraft);
+      document.removeEventListener('visibilitychange', preserveHiddenDraft);
+    };
+  }, [draftReady, persistDraft, queue.length]);
 
   if (styles.composer) {
     return <ModernComposerView fileInputRef={fileInputRef} model={{
@@ -580,7 +683,7 @@ export default function PostComposer() {
       publishFacebook, setPublishFacebook, publishInstagram, setPublishInstagram,
       publishMode, scheduleTime, setScheduleTime, spreadInterval, setSpreadInterval,
       recurrenceFrequency, setRecurrenceFrequency, recurrenceCount, setRecurrenceCount,
-      lastRunSummary, isGenerating, isSubmitting, isDragging, setIsDragging,
+      lastRunSummary, isGenerating, isSubmitting, isDragging, setIsDragging, draftStatus,
       draggedQueueItemId, setDraggedQueueItemId, maxLength,
       facebookEnabled, instagramEnabled, facebookTargetActive, instagramTargetActive,
       carouselMode, canSubmit, publishLabel, targetLabel, timingLabel,
@@ -614,7 +717,7 @@ export default function PostComposer() {
               className={`${styles.accountCard} ${selectedAccount.id === account.id ? styles.accountCardActive : ''}`}
               style={{ '--account-accent': account.accent }}
               onClick={() => handleAccountChange(account.id)}
-              disabled={isSubmitting || isGenerating}
+              disabled={isSubmitting}
               aria-pressed={selectedAccount.id === account.id}
             >
               <span className={styles.accountAvatar}>{account.shortName}</span>
@@ -1036,7 +1139,7 @@ export default function PostComposer() {
           type="button"
           className={styles.saveDraftButton}
           onClick={handleSaveDraft}
-          disabled={isSubmitting || isGenerating}
+          disabled={isSubmitting}
         >
           Save as draft
         </button>
