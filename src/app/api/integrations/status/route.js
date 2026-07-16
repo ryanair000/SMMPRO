@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { SOCIAL_ACCOUNTS, getAccountCredentials } from '@/lib/socialAccounts';
+import { getTikTokConnectionStatus } from '@/lib/tiktok';
 
 export const maxDuration = 30;
 
@@ -86,9 +87,17 @@ export async function GET(request) {
     .split(',')
     .map(value => value.trim())
     .filter(Boolean).length;
-  const [openai, telegram] = await Promise.all([
+  const [openai, telegram, tiktok] = await Promise.all([
     checkOpenAI(process.env.OPENAI_API_KEY?.trim()),
-    checkTelegram(process.env.TELEGRAM_BOT_TOKEN?.trim())
+    checkTelegram(process.env.TELEGRAM_BOT_TOKEN?.trim()),
+    getTikTokConnectionStatus({ refresh: true }).catch(error => ({
+      configured: Boolean(process.env.TIKTOK_CLIENT_KEY?.trim() && process.env.TIKTOK_CLIENT_SECRET?.trim()),
+      connected: false,
+      accountId: 'chezahub',
+      musicAlwaysOn: true,
+      autoAddMusic: true,
+      error: error instanceof Error ? error.message : 'TikTok health check failed.'
+    }))
   ]);
 
   return NextResponse.json({
@@ -108,6 +117,10 @@ export async function GET(request) {
       metaApp: {
         configured: Boolean(process.env.META_APP_ID?.trim() && process.env.META_APP_SECRET?.trim()),
         healthy: Boolean(process.env.META_APP_ID?.trim() && process.env.META_APP_SECRET?.trim())
+      },
+      tiktok: {
+        ...tiktok,
+        healthy: Boolean(tiktok.configured && tiktok.connected)
       }
     },
     accounts
