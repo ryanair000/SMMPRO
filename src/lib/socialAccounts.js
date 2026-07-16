@@ -9,7 +9,8 @@ export const SOCIAL_ACCOUNTS = [
     shortName: 'CH',
     platforms: {
       facebook: true,
-      instagram: true
+      instagram: true,
+      tiktok: true
     },
     env: {
       pageId: 'CHEZAHUB_FB_PAGE_ID',
@@ -34,7 +35,8 @@ export const SOCIAL_ACCOUNTS = [
     shortName: 'JS',
     platforms: {
       facebook: false,
-      instagram: true
+      instagram: true,
+      tiktok: false
     },
     env: {
       pageId: 'JENGASITES_FB_PAGE_ID',
