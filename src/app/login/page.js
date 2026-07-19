@@ -1,9 +1,14 @@
 "use client";
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import toast, { Toaster } from 'react-hot-toast';
 import styles from './login.module.css';
+
+function safeNextPath(value) {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/';
+  return value;
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -12,6 +17,7 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const handleLogin = async (event) => {
     event.preventDefault();
@@ -27,7 +33,7 @@ export default function LoginPage() {
 
       if (res.ok) {
         toast.success('Welcome to SMM Pro!');
-        router.push('/');
+        router.push(safeNextPath(searchParams.get('next')));
         router.refresh();
       } else {
         const data = await res.json();
