@@ -71,7 +71,7 @@ export function getAccountCredentials(accountId) {
 
   // Instagram API with Facebook Login publishes with the Page access token.
   // Keep `userToken` as a compatibility alias for the existing publisher routes.
-  credentials.instagramAccessToken = credentials.pageToken || credentials.metaUserToken;
+  credentials.instagramAccessToken = credentials.pageToken;
   credentials.userToken = credentials.instagramAccessToken;
 
   return { account, credentials };
