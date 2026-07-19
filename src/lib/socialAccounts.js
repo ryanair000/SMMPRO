@@ -58,16 +58,21 @@ export function getAccountCredentials(accountId) {
   const credentials = {
     pageId: readValue(account.env.pageId),
     pageToken: readValue(account.env.pageToken),
-    userToken: readValue(account.env.userToken),
+    metaUserToken: readValue(account.env.userToken),
     igUserId: readValue(account.env.igUserId)
   };
 
   if (account.legacyEnv) {
     credentials.pageId ||= readValue(account.legacyEnv.pageId);
     credentials.pageToken ||= readValue(account.legacyEnv.pageToken);
-    credentials.userToken ||= readValue(account.legacyEnv.userToken);
+    credentials.metaUserToken ||= readValue(account.legacyEnv.userToken);
     credentials.igUserId ||= readValue(account.legacyEnv.igUserId);
   }
+
+  // Instagram API with Facebook Login publishes with the Page access token.
+  // Keep `userToken` as a compatibility alias for the existing publisher routes.
+  credentials.instagramAccessToken = credentials.pageToken || credentials.metaUserToken;
+  credentials.userToken = credentials.instagramAccessToken;
 
   return { account, credentials };
 }
