@@ -36,14 +36,15 @@ test('uses the Page token for Instagram publishing with Facebook Login', () => {
   });
 });
 
-test('falls back to the user token when no Page token is configured', () => {
+test('does not publish Instagram content with a user token when the Page token is missing', () => {
   withEnv({
     JENGASITES_FB_PAGE_ACCESS_TOKEN: undefined,
     JENGASITES_FB_USER_ACCESS_TOKEN: 'user-token'
   }, () => {
     const { credentials } = getAccountCredentials('jengasites');
 
-    assert.equal(credentials.instagramAccessToken, 'user-token');
-    assert.equal(credentials.userToken, 'user-token');
+    assert.equal(credentials.instagramAccessToken, undefined);
+    assert.equal(credentials.userToken, undefined);
+    assert.equal(credentials.metaUserToken, 'user-token');
   });
 });
