@@ -31,6 +31,14 @@ test('keeps the existing carouselItems contract working', () => {
   assert.equal(getPublishMode(form, collectImageUrls(form)), 'carousel');
 });
 
+test('recognizes Socio Instagram Story requests', () => {
+  const form = new FormData();
+  form.set('postFormat', 'story');
+  form.set('imageUrl', 'https://cdn.example/story.jpg');
+
+  assert.equal(getPublishMode(form, collectImageUrls(form)), 'story');
+});
+
 test('rejects non-HTTPS Instagram carousel media', () => {
   assert.throws(
     () => validatePublicImageUrls(['http://cdn.example/one.jpg'], { requireHttps: true }),

@@ -120,6 +120,32 @@ async function postToInstagram({ igUserId, accessToken, caption, imageUrl }) {
   return { ok: true, data: { ...published.data, containerId: created.data.id } };
 }
 
+async function postStoryToInstagram({ igUserId, accessToken, imageUrl }) {
+  const createForm = new FormData();
+  createForm.append('media_type', 'STORIES');
+  createForm.append('image_url', imageUrl);
+  createForm.append('access_token', accessToken);
+  const created = await postToFacebook(
+    graphUrl(`/${igUserId}/media`),
+    createForm,
+    'Instagram Story'
+  );
+  if (!created.ok) return created;
+
+  const ready = await waitForInstagramContainer(created.data.id, accessToken);
+  if (!ready.ok) return ready;
+  const publishForm = new FormData();
+  publishForm.append('creation_id', created.data.id);
+  publishForm.append('access_token', accessToken);
+  const published = await postToFacebook(
+    graphUrl(`/${igUserId}/media_publish`),
+    publishForm,
+    'Instagram Story'
+  );
+  if (!published.ok) return published;
+  return { ok: true, data: { ...published.data, containerId: created.data.id } };
+}
+
 async function postCarouselToInstagram({ igUserId, accessToken, caption, imageUrls }) {
   const childIds = [];
   for (let index = 0; index < imageUrls.length; index += 1) {
@@ -248,6 +274,12 @@ export async function POST(request) {
     if (!publishFacebook && !publishInstagram) {
       return jsonError('Choose at least one publishing target.', 400);
     }
+    if (publishMode === 'story' && (publishFacebook || !publishInstagram)) {
+      return jsonError('Instagram Stories can only publish to Instagram.', 400);
+    }
+    if (publishMode === 'story' && (imageUrls.length !== 1 || image)) {
+      return jsonError('An Instagram Story requires one public image URL.', 400);
+    }
     if (image && (!image.type?.startsWith('image/') || image.size > MAX_IMAGE_BYTES)) {
       return jsonError('Uploaded image must be an image no larger than 10 MB.', 413);
     }
@@ -256,7 +288,9 @@ export async function POST(request) {
     }
     try {
       validatePublicImageUrls(imageUrls, {
-        requireHttps: publishInstagram && publishMode === 'carousel'
+        requireHttps:
+          publishInstagram &&
+          (publishMode === 'carousel' || publishMode === 'story')
       });
     } catch (error) {
       return jsonError(error.message, 400);
@@ -383,22 +417,34 @@ export async function POST(request) {
           status: 'Failed: Instagram needs a public image URL.'
         });
       } else {
-        const instagramResult = publishMode === 'carousel'
-          ? await postCarouselToInstagram({
+        const instagramResult = publishMode === 'story'
+          ? await postStoryToInstagram({
+              igUserId,
+              accessToken: userToken,
+              imageUrl: effectiveImageUrl
+            })
+          : publishMode === 'carousel'
+            ? await postCarouselToInstagram({
               igUserId,
               accessToken: userToken,
               caption: message,
               imageUrls
             })
-          : await postToInstagram({
-              igUserId,
-              accessToken: userToken,
-              caption: message,
-              imageUrl: effectiveImageUrl
-            });
+            : await postToInstagram({
+                igUserId,
+                accessToken: userToken,
+                caption: message,
+                imageUrl: effectiveImageUrl
+              });
         results.push(instagramResult.ok
           ? {
-              target: `${account.name} Instagram${publishMode === 'carousel' ? ' Carousel' : ''}`,
+              target: `${account.name} Instagram${
+                publishMode === 'carousel'
+                  ? ' Carousel'
+                  : publishMode === 'story'
+                    ? ' Story'
+                    : ''
+              }`,
               id: instagramResult.data.id,
               containerId: instagramResult.data.containerId,
               mediaIds: instagramResult.data.childIds,

@@ -24,7 +24,11 @@ export function collectImageUrls(formData) {
 }
 
 export function getPublishMode(formData, imageUrls) {
-  return formData.get('publishMode') === 'carousel' || imageUrls.length > 1
+  const requestedMode =
+    formData.get('postFormat')?.toString() ||
+    formData.get('publishMode')?.toString();
+  if (requestedMode === 'story') return 'story';
+  return requestedMode === 'carousel' || imageUrls.length > 1
     ? 'carousel'
     : 'individual';
 }
