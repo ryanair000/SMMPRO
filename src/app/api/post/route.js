@@ -15,6 +15,12 @@ import {
 import { assertContentLength, rateLimit } from '@/lib/rateLimit';
 import { SOCIAL_ACCOUNTS, getAccountCredentials } from '@/lib/socialAccounts';
 import { uploadPublicImage } from '@/lib/publicImage';
+import { enqueueScheduledPublishes } from '@/lib/scheduledPublishes';
+import {
+  MAX_RECURRENCE_OCCURRENCES,
+  RECURRENCE_FREQUENCIES,
+  normalizeRecurrence
+} from '@/lib/scheduleRecurrence';
 
 const MAX_FORM_BYTES = 25 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -247,6 +253,8 @@ export async function POST(request) {
     const candidateImage = formData.get('image');
     const image = isImageFile(candidateImage) ? candidateImage : null;
     const scheduledTime = formData.get('scheduledPublishTime')?.toString() || '';
+    const recurrenceFrequency = formData.get('recurrenceFrequency')?.toString() || 'none';
+    const recurrenceCount = formData.get('recurrenceCount')?.toString() || '1';
     const requestedFacebook = formData.get('publishFacebook') !== 'false';
     const requestedInstagram = formData.get('publishInstagram') !== 'false';
     const accountId = formData.get('accountId')?.toString() || 'chezahub';
@@ -302,6 +310,26 @@ export async function POST(request) {
         400
       );
     }
+    if (!RECURRENCE_FREQUENCIES.includes(recurrenceFrequency)) {
+      return jsonError('Repeat must be none, daily, or weekly.', 400);
+    }
+    const recurrence = normalizeRecurrence(recurrenceFrequency, recurrenceCount);
+    if (recurrenceFrequency !== 'none') {
+      const requestedCount = Number.parseInt(recurrenceCount, 10);
+      if (!Number.isFinite(requestedCount) || requestedCount < 1 ||
+          requestedCount > MAX_RECURRENCE_OCCURRENCES) {
+        return jsonError(
+          `Recurring schedules require 1-${MAX_RECURRENCE_OCCURRENCES} occurrences.`,
+          400
+        );
+      }
+      if (!scheduledTime) {
+        return jsonError('Recurring schedules need a first scheduled time.', 400);
+      }
+    }
+    if (scheduledTime && publishMode === 'carousel') {
+      return jsonError('Carousel scheduling is not supported.', 400);
+    }
     if (scheduledTime) {
       const scheduleUnix = Number(scheduledTime);
       if (!Number.isFinite(scheduleUnix) ||
@@ -326,7 +354,9 @@ export async function POST(request) {
       publishFacebook,
       publishInstagram,
       scheduledTime,
-      publishMode
+      publishMode,
+      recurrenceFrequency: recurrence.frequency,
+      recurrenceCount: recurrence.count
     };
     const idempotency = await beginIdempotentPublish(idempotencyKey, requestDescriptor);
     if (idempotency.mode === 'conflict') {
@@ -349,8 +379,61 @@ export async function POST(request) {
 
     const results = [];
     let effectiveImageUrl = imageUrls[0] || '';
-    if (publishInstagram && !publishFacebook && !effectiveImageUrl && image) {
+    if ((scheduledTime || (publishInstagram && !publishFacebook)) &&
+        !effectiveImageUrl && image) {
       effectiveImageUrl = await uploadPublicImage(image);
+    }
+
+    if (scheduledTime) {
+      if (publishInstagram && !effectiveImageUrl) {
+        const body = { error: 'Scheduled Instagram publishing requires a public image URL.' };
+        await failIdempotentPublish(claimedKey, body);
+        return NextResponse.json(body, { status: 400 });
+      }
+
+      const platforms = [
+        publishFacebook && 'facebook',
+        publishInstagram && 'instagram'
+      ].filter(Boolean);
+      const scheduled = await enqueueScheduledPublishes({
+        sourceKey: idempotencyKey,
+        accountId,
+        message,
+        imageUrl: effectiveImageUrl,
+        publishMode,
+        platforms,
+        firstScheduledUnix: Number(scheduledTime),
+        recurrenceFrequency: recurrence.frequency,
+        recurrenceCount: recurrence.count
+      });
+      for (const platform of platforms) {
+        const isInstagram = platform === 'instagram';
+        results.push({
+          target: `${account.name} ${isInstagram ? 'Instagram' : 'Facebook'}${
+            isInstagram && publishMode === 'story' ? ' Story' : ''
+          }`,
+          status: 'Scheduled',
+          scheduledCount: scheduled.occurrenceCount,
+          firstScheduledFor: scheduled.firstScheduledFor,
+          lastScheduledFor: scheduled.lastScheduledFor,
+          jobIds: scheduled.jobs
+            .filter(job => job.platform === platform)
+            .map(job => job.jobId)
+        });
+      }
+
+      const body = {
+        success: true,
+        account: account.id,
+        mode: publishMode,
+        recurrence: {
+          frequency: recurrence.frequency,
+          count: recurrence.count
+        },
+        results
+      };
+      await completeIdempotentPublish(claimedKey, body);
+      return NextResponse.json(body);
     }
 
     if (publishFacebook) {

@@ -33,8 +33,9 @@ export default function ModernComposerView({ model: m, fileInputRef }) {
     m.carouselMediaMissing ? 'Every carousel slide needs an image.' : '',
     m.carouselUrlInvalid ? 'Every carousel URL must be valid.' : '',
     m.scheduleIsTooSoon ? 'Schedule at least 10 minutes from now.' : '',
-    m.needsScheduleForRecurrence ? 'Recurring posts need a first publish time.' : '',
-    m.scheduleTime && m.instagramTargetActive ? 'Scheduled runs publish to Facebook only.' : ''
+    m.needsScheduleForRecurrence
+      ? `Recurring ${m.storyMode ? 'Stories' : 'posts'} need a first publish time.`
+      : ''
   ].filter(Boolean);
 
   useEffect(() => {
@@ -65,12 +66,13 @@ export default function ModernComposerView({ model: m, fileInputRef }) {
             disabled={m.isSubmitting}><i style={{ '--account-accent': account.accent }}>{account.shortName}</i>{account.name}</button>)}</Control>
           <Control label="Channels">
             <button type="button" className={m.facebookTargetActive ? styles.active : ''} onClick={() => m.setPublishFacebook(value => !value)}
-              disabled={!m.facebookEnabled || m.carouselMode || m.isSubmitting}>Facebook</button>
+              disabled={!m.facebookEnabled || m.carouselMode || m.storyMode || m.isSubmitting}>Facebook</button>
             <button type="button" className={m.instagramTargetActive ? styles.active : ''} onClick={() => m.setPublishInstagram(value => !value)}
-              disabled={!m.instagramEnabled || m.carouselMode || m.isSubmitting}>Instagram</button>
+              disabled={!m.instagramEnabled || m.carouselMode || m.storyMode || m.isSubmitting}>Instagram</button>
           </Control>
           <Control label="Format">
-            <button type="button" className={!m.carouselMode ? styles.active : ''} onClick={() => m.handlePublishModeChange('individual')}>Separate</button>
+            <button type="button" className={!m.carouselMode && !m.storyMode ? styles.active : ''} onClick={() => m.handlePublishModeChange('individual')}>Separate</button>
+            <button type="button" className={m.storyMode ? styles.active : ''} onClick={() => m.handlePublishModeChange('story')} disabled={!m.instagramEnabled}>Story</button>
             <button type="button" className={m.carouselMode ? styles.active : ''} onClick={() => m.handlePublishModeChange('carousel')} disabled={!m.instagramEnabled}>Carousel</button>
           </Control>
           <Control label="Timing">
@@ -85,7 +87,7 @@ export default function ModernComposerView({ model: m, fileInputRef }) {
       <section className={styles.composerCard}>
         <div className={styles.workspace}>
           <section className={styles.mediaPane}>
-            <PaneHeader title="Media" badge={m.queue.length + '/20'} hint={m.carouselMode ? 'Set the order of carousel slides.' : 'Set the publish order of separate posts.'}>
+            <PaneHeader title="Media" badge={m.queue.length + '/20'} hint={m.carouselMode ? 'Set the order of carousel slides.' : m.storyMode ? 'Each image becomes its own Instagram Story.' : 'Set the publish order of separate posts.'}>
               <button type="button" className={styles.addButton} onClick={() => fileInputRef.current?.click()}
                 disabled={m.isSubmitting || m.isGenerating || m.queue.length >= 20}>+ Add images</button>
             </PaneHeader>
@@ -130,14 +132,14 @@ export default function ModernComposerView({ model: m, fileInputRef }) {
           <section className={styles.captionPane}>
             {captionItem ? <>
               <PaneHeader title="Caption" badge={m.carouselMode ? 'Shared' : (captionIndex + 1) + '/' + m.queue.length}
-                hint={m.carouselMode ? 'One caption for the full carousel.' : 'Each image publishes as its own post.'}>
-                <button type="button" className={styles.aiButton} onClick={m.handleGenerateAll} disabled={m.isGenerating || m.isSubmitting}>
-                  {m.isGenerating ? 'Writing...' : m.carouselMode ? 'Write with AI' : 'Write missing captions'}</button>
+                hint={m.carouselMode ? 'One caption for the full carousel.' : m.storyMode ? 'Story images publish without feed captions.' : 'Each image publishes as its own post.'}>
+                <button type="button" className={styles.aiButton} onClick={m.handleGenerateAll} disabled={m.isGenerating || m.isSubmitting || m.storyMode}>
+                  {m.storyMode ? 'Not used for Stories' : m.isGenerating ? 'Writing...' : m.carouselMode ? 'Write with AI' : 'Write missing captions'}</button>
               </PaneHeader>
               <div className={styles.captionEditor}><textarea value={captionItem.caption}
                 onChange={event => m.updateQueueItem(captionIndex, { caption: event.target.value, status: 'ready' })}
-                placeholder={m.carouselMode ? 'Write one caption for this carousel...' : 'Write a caption for this post...'}
-                maxLength={m.maxLength} disabled={m.isSubmitting || m.isGenerating} />
+                placeholder={m.storyMode ? 'Instagram Stories publish without feed captions.' : m.carouselMode ? 'Write one caption for this carousel...' : 'Write a caption for this post...'}
+                maxLength={m.maxLength} disabled={m.isSubmitting || m.isGenerating || m.storyMode} />
                 <div><span>{captionItem.caption ? 'Caption ready' : 'Add a caption or let AI write it.'}</span><b>{captionItem.caption.length}/{m.maxLength}</b></div></div>
               {!m.carouselMode && m.queue.length > 1 && <div className={styles.postNav}><button type="button" onClick={() => selectItem(m.selectedIndex - 1)} disabled={!m.selectedIndex}>← Previous</button>
                 <span>Post {m.selectedIndex + 1} of {m.queue.length}</span><button type="button" onClick={() => selectItem(m.selectedIndex + 1)} disabled={m.selectedIndex === m.queue.length - 1}>Next →</button></div>}
@@ -155,7 +157,7 @@ export default function ModernComposerView({ model: m, fileInputRef }) {
 
         <footer className={styles.actionBar}>
           <div className={styles.campaignSummary}><span style={{ '--account-accent': m.selectedAccount.accent }}>{m.selectedAccount.shortName}</span><div>
-            <strong>{m.selectedAccount.name} · {m.targetLabel}</strong><p>{m.queue.length} image{m.queue.length === 1 ? '' : 's'} · {m.carouselMode ? '1 carousel' : m.queue.length + ' separate post' + (m.queue.length === 1 ? '' : 's')} · {m.timingLabel}</p></div></div>
+            <strong>{m.selectedAccount.name} · {m.targetLabel}</strong><p>{m.queue.length} image{m.queue.length === 1 ? '' : 's'} · {m.carouselMode ? '1 carousel' : m.storyMode ? `${m.queue.length} ${m.queue.length === 1 ? 'Story' : 'Stories'}` : m.queue.length + ' separate post' + (m.queue.length === 1 ? '' : 's')} · {m.timingLabel}</p></div></div>
           <div className={styles.actionStatus}><span>{m.draftStatus === 'saving'
             ? 'Saving draft...'
             : m.draftStatus === 'saved'
@@ -167,7 +169,7 @@ export default function ModernComposerView({ model: m, fileInputRef }) {
                   : ''}</span></div>
           <button type="button" className={styles.saveButton} onClick={m.handleSaveDraft} disabled={m.isSubmitting}>Save draft</button>
           <button type="button" className={styles.publishButton} onClick={m.handleSubmitAll} disabled={!m.canSubmit} title={m.publishLabel}>
-            {m.isSubmitting ? 'Processing...' : !m.queue.length ? 'Add images' : m.carouselMode ? 'Publish carousel' : m.scheduleTime || m.recurrenceEnabled ? 'Schedule posts' : 'Publish posts'}</button>
+            {m.isSubmitting ? 'Processing...' : !m.queue.length ? 'Add images' : m.carouselMode ? 'Publish carousel' : m.scheduleTime || m.recurrenceEnabled ? `Schedule ${m.storyMode ? 'Stories' : 'posts'}` : `Publish ${m.storyMode ? 'Stories' : 'posts'}`}</button>
         </footer>
       </section>
     </div>
@@ -184,11 +186,11 @@ function SettingsPanel({ panel, close, model: m, selectedItem }) {
       <button type="button" onClick={close} aria-label="Close">×</button></div>
     {panel === 'schedule' && <div className={styles.panelBody}>
       <label><span>First publish time</span><input type="datetime-local" value={m.scheduleTime} onChange={event => m.setScheduleTime(event.target.value)} /><small>At least 10 minutes from now.</small></label>
-      <div className={styles.fieldRow}><label><span>Hours between posts</span><input type="number" min="0" max="168" value={m.spreadInterval} onChange={event => m.setSpreadInterval(event.target.value)} /></label>
+      <div className={styles.fieldRow}><label><span>Hours between {m.storyMode ? 'Stories' : 'posts'}</span><input type="number" min="0" max="168" value={m.spreadInterval} onChange={event => m.setSpreadInterval(event.target.value)} /></label>
         <label><span>Repeat</span><select value={m.recurrenceFrequency} onChange={event => m.setRecurrenceFrequency(event.target.value)}>
           <option value="none">Do not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option></select></label></div>
-      {m.recurrenceEnabled && <label><span>Number of runs</span><input type="number" min="1" max="60" value={m.recurrenceCount} onChange={event => m.setRecurrenceCount(event.target.value)} /><small>{m.totalScheduledJobs} posts total.</small></label>}
-      {m.scheduleTime && m.instagramTargetActive && <p className={styles.notice}>Scheduled jobs publish to Facebook only; Instagram is skipped.</p>}
+      {m.recurrenceEnabled && <label><span>Number of runs</span><input type="number" min="1" max="60" value={m.recurrenceCount} onChange={event => m.setRecurrenceCount(event.target.value)} /><small>{m.totalScheduledJobs} {m.storyMode ? 'Stories' : 'posts'} total.</small></label>}
+      {m.scheduleTime && <p className={styles.notice}>Scheduled {m.storyMode ? 'Stories' : 'posts'} are queued securely and publish automatically at each selected time.</p>}
     </div>}
     {panel === 'instagram' && <div className={styles.panelBody}><label><span>Public URL for selected image</span><input type="url" value={selectedItem?.imageUrl || ''}
       onChange={event => m.updateQueueItem(m.selectedIndex, { imageUrl: event.target.value })} placeholder="https://example.com/poster.jpg" />
