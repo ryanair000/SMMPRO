@@ -18,6 +18,16 @@ Run the durable publishing migration before the first deployment:
 npm run db:migrate
 ```
 
+Scheduled Facebook posts, Instagram posts, and Instagram Stories are stored in
+Neon and dispatched by `/api/cron/scheduled-publishes`. Daily and weekly repeats
+are expanded into durable jobs on the server. Configure `CRON_SECRET` in Vercel,
+and configure the public Supabase Storage bucket used by `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY`, and `SMM_MEDIA_BUCKET` for uploaded scheduled media.
+
+Invoke the protected cron route every minute from a scheduler that supports the
+required frequency. The production deployment uses Supabase Cron because Vercel
+Hobby projects only support daily cron jobs.
+
 ## Refresh Meta Tokens
 
 Meta short-lived user tokens must be exchanged with the matching Meta App ID and App Secret.

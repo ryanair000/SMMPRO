@@ -14,6 +14,10 @@ import { SOCIAL_ACCOUNTS } from '@/lib/socialAccounts';
 import ModernComposerView from './ModernComposerView';
 import styles from './PostComposer.module.css';
 
+function isSuccessfulPublishStatus(status) {
+  return status === 'Success' || status === 'Scheduled';
+}
+
 export default function PostComposer() {
   const [queue, setQueue] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -45,6 +49,7 @@ export default function PostComposer() {
   const facebookTargetActive = facebookEnabled && publishFacebook;
   const instagramTargetActive = instagramEnabled && publishInstagram;
   const carouselMode = publishMode === 'carousel';
+  const storyMode = publishMode === 'story';
   const hasTargets = facebookTargetActive || instagramTargetActive;
   const validImageUrl = !selectedItem?.imageUrl?.trim() || /^https?:\/\/\S+$/i.test(selectedItem.imageUrl.trim());
   const needsPublicInstagramUrl = !carouselMode && instagramTargetActive && !facebookTargetActive && !selectedItem?.imageUrl?.trim() && !selectedItem?.file;
@@ -56,7 +61,6 @@ export default function PostComposer() {
   const recurrenceEnabled = recurrenceFrequency !== 'none';
   const normalizedRecurrenceCount = Math.min(60, Math.max(1, Number.parseInt(recurrenceCount, 10) || 1));
   const needsScheduleForRecurrence = recurrenceEnabled && !scheduleTime;
-  const recurrenceIntervalSeconds = recurrenceFrequency === 'weekly' ? 7 * 24 * 60 * 60 : 24 * 60 * 60;
   const totalScheduledJobs = queue.length * (recurrenceEnabled ? normalizedRecurrenceCount : 1);
   const canSubmit = queue.length > 0
     && hasTargets
@@ -73,8 +77,8 @@ export default function PostComposer() {
     : carouselMode
       ? `Publish 1 ${selectedAccount.name} Carousel (${queue.length} image${queue.length === 1 ? '' : 's'})`
     : scheduleTime || recurrenceEnabled
-      ? `${recurrenceEnabled ? 'Schedule Recurring' : 'Schedule'} ${totalScheduledJobs} ${selectedAccount.name} Posts`
-      : `Publish ${queue.length} ${selectedAccount.name} Posts Now`;
+      ? `${recurrenceEnabled ? 'Schedule Recurring' : 'Schedule'} ${totalScheduledJobs} ${selectedAccount.name} ${storyMode ? 'Stories' : 'Posts'}`
+      : `Publish ${queue.length} ${selectedAccount.name} ${storyMode ? 'Stories' : 'Posts'} Now`;
   const targetLabel = [facebookTargetActive && 'Facebook', instagramTargetActive && 'Instagram']
     .filter(Boolean)
     .join(' + ') || 'No channel selected';
@@ -119,6 +123,9 @@ export default function PostComposer() {
       setPublishInstagram(true);
       setScheduleTime('');
       setRecurrenceFrequency('none');
+    } else if (mode === 'story') {
+      setPublishFacebook(false);
+      setPublishInstagram(true);
     } else {
       setPublishFacebook(selectedAccount.platforms?.facebook !== false);
       setPublishInstagram(selectedAccount.platforms?.instagram !== false);
@@ -191,7 +198,9 @@ export default function PostComposer() {
         if (draftAccount) setSelectedAccountId(draftAccount.id);
         setPublishFacebook(savedDraft.publishFacebook !== false);
         setPublishInstagram(savedDraft.publishInstagram !== false);
-        setPublishMode(savedDraft.publishMode === 'carousel' ? 'carousel' : 'individual');
+        setPublishMode(['carousel', 'story'].includes(savedDraft.publishMode)
+          ? savedDraft.publishMode
+          : 'individual');
         setScheduleTime(savedDraft.scheduleTime || '');
         setSpreadInterval(Number(savedDraft.spreadInterval) || 0);
         setRecurrenceFrequency(['daily', 'weekly'].includes(savedDraft.recurrenceFrequency) ? savedDraft.recurrenceFrequency : 'none');
@@ -357,7 +366,7 @@ export default function PostComposer() {
     }
 
     if (needsScheduleForRecurrence) {
-      toast.error('Choose a first scheduled date and time for recurring posts.');
+      toast.error(`Choose a first scheduled date and time for recurring ${storyMode ? 'Stories' : 'posts'}.`);
       return;
     }
 
@@ -410,7 +419,8 @@ export default function PostComposer() {
           throw new Error(data.error || 'Failed to publish carousel');
         }
 
-        const failedTargets = (data.results || []).filter(result => result.status !== 'Success');
+        const failedTargets = (data.results || [])
+          .filter(result => !isSuccessfulPublishStatus(result.status));
         if (failedTargets.length) {
           throw new Error(failedTargets.map(result => `${result.target}: ${result.status}`).join('; '));
         }
@@ -419,7 +429,7 @@ export default function PostComposer() {
           post: 'Carousel',
           target: result.target,
           status: result.status || 'Unknown',
-          ok: result.status === 'Success'
+          ok: isSuccessfulPublishStatus(result.status)
         })));
         toast.success('Instagram carousel published successfully.', { id: toastId });
         void enqueueDraftWrite(() => deleteCampaignDraft());
@@ -450,11 +460,10 @@ export default function PostComposer() {
 
     setIsSubmitting(true);
     setLastRunSummary([]);
-    const toastId = toast.loading(`${recurrenceEnabled ? 'Scheduling recurring posts' : 'Publishing/Scheduling'} for ${selectedAccount.name}...`);
+    const contentLabel = storyMode ? 'Stories' : 'posts';
+    const toastId = toast.loading(`${recurrenceEnabled ? `Scheduling recurring ${contentLabel}` : 'Publishing/Scheduling'} for ${selectedAccount.name}...`);
     let successCount = 0;
     let hadFailures = false;
-    const occurrenceCount = recurrenceEnabled ? normalizedRecurrenceCount : 1;
-
     for (let i = 0; i < queue.length; i++) {
       const item = queue[i];
       if (item.status === 'published') continue;
@@ -462,8 +471,7 @@ export default function PostComposer() {
       setSelectedIndex(i);
       let itemImageUrl = item.imageUrl?.trim() || '';
 
-      for (let occurrenceIndex = 0; occurrenceIndex < occurrenceCount; occurrenceIndex += 1) {
-        try {
+      try {
           if (instagramTargetActive && !facebookTargetActive && !itemImageUrl && item.file) {
             itemImageUrl = await preparePublicImageUrl(item, i);
           }
@@ -476,15 +484,18 @@ export default function PostComposer() {
           formData.append('accountId', selectedAccount.id);
           formData.append('publishFacebook', facebookTargetActive ? 'true' : 'false');
           formData.append('publishInstagram', instagramTargetActive ? 'true' : 'false');
+          formData.append('publishMode', publishMode);
+          formData.append('idempotencyKey', crypto.randomUUID());
           if (item.caption.trim()) formData.append('message', item.caption);
-          if (item.file) formData.append('image', item.file);
+          if (item.file && !storyMode) formData.append('image', item.file);
           if (itemImageUrl) formData.append('imageUrl', itemImageUrl);
 
           if (baseTime) {
-            const recurrenceOffset = occurrenceIndex * recurrenceIntervalSeconds;
             const spreadOffset = i * spreadInterval * 3600;
-            const postUnixTime = Math.floor(baseTime + recurrenceOffset + spreadOffset);
+            const postUnixTime = Math.floor(baseTime + spreadOffset);
             formData.append('scheduledPublishTime', postUnixTime.toString());
+            formData.append('recurrenceFrequency', recurrenceFrequency);
+            formData.append('recurrenceCount', normalizedRecurrenceCount.toString());
           }
 
           const res = await fetch('/api/post', {
@@ -505,15 +516,15 @@ export default function PostComposer() {
             throw new Error(`${data.error || 'Failed to post'}${fbCode}`);
           }
 
-          const label = recurrenceEnabled ? `Post ${i + 1}, run ${occurrenceIndex + 1}` : `Post ${i + 1}`;
+          const label = `${storyMode ? 'Story' : 'Post'} ${i + 1}`;
           const resultRows = (data.results || []).map(result => ({
             post: label,
             target: result.target,
             status: result.status || 'Unknown',
-            ok: result.status === 'Success'
+            ok: isSuccessfulPublishStatus(result.status)
           }));
           const failedTargets = data.results
-            ?.filter(result => result.status && result.status !== 'Success')
+            ?.filter(result => result.status && !isSuccessfulPublishStatus(result.status))
             .map(result => `${result.target}: ${result.status}`);
 
           if (failedTargets?.length) {
@@ -526,8 +537,8 @@ export default function PostComposer() {
           }
 
           setLastRunSummary(prev => [...prev, ...resultRows]);
-        } catch (err) {
-          const label = recurrenceEnabled ? `Post ${i + 1}, run ${occurrenceIndex + 1}` : `Post ${i + 1}`;
+      } catch (err) {
+          const label = `${storyMode ? 'Story' : 'Post'} ${i + 1}`;
           hadFailures = true;
           toast.error(`${label}: ${err.message}`);
           updateQueueItem(i, { status: 'error' });
@@ -535,15 +546,14 @@ export default function PostComposer() {
             ...prev,
             { post: label, target: selectedAccount.name, status: err.message, ok: false }
           ]);
-        }
       }
     }
 
     setIsSubmitting(false);
     if (hadFailures) {
-      toast.error(`Finished with issues. ${successCount} posts fully succeeded; review the queue before retrying.`, { id: toastId });
+      toast.error(`Finished with issues. ${successCount} ${contentLabel} fully succeeded; review the queue before retrying.`, { id: toastId });
     } else {
-      toast.success(`Successfully processed ${successCount} posts.`, { id: toastId });
+      toast.success(`Successfully processed ${successCount} ${contentLabel}.`, { id: toastId });
       void enqueueDraftWrite(() => deleteCampaignDraft());
       queue.forEach(item => {
         if (item.objectUrl) URL.revokeObjectURL(item.objectUrl);
@@ -686,7 +696,7 @@ export default function PostComposer() {
       lastRunSummary, isGenerating, isSubmitting, isDragging, setIsDragging, draftStatus,
       draggedQueueItemId, setDraggedQueueItemId, maxLength,
       facebookEnabled, instagramEnabled, facebookTargetActive, instagramTargetActive,
-      carouselMode, canSubmit, publishLabel, targetLabel, timingLabel,
+      carouselMode, storyMode, canSubmit, publishLabel, targetLabel, timingLabel,
       recurrenceEnabled, totalScheduledJobs, validImageUrl, needsPublicInstagramUrl,
       carouselCountValid, carouselMediaMissing, carouselUrlInvalid, scheduleIsTooSoon,
       needsScheduleForRecurrence, handleAccountChange, handlePublishModeChange,
@@ -815,7 +825,7 @@ export default function PostComposer() {
         </div>
         <p className={styles.pasteHint}>Tip: copy an image from your clipboard and press Ctrl+V anywhere on this page.</p>
 
-        {(!hasTargets || !validImageUrl || needsPublicInstagramUrl || !carouselCountValid || carouselMediaMissing || carouselUrlInvalid || scheduleIsTooSoon || needsScheduleForRecurrence || (scheduleTime && instagramTargetActive)) && (
+        {(!hasTargets || !validImageUrl || needsPublicInstagramUrl || !carouselCountValid || carouselMediaMissing || carouselUrlInvalid || scheduleIsTooSoon || needsScheduleForRecurrence) && (
           <div className={styles.validationPanel} role="status">
             {!hasTargets && <p>Choose Facebook, Instagram, or both.</p>}
             {!validImageUrl && <p>Use a valid public image URL or leave it empty.</p>}
@@ -824,8 +834,7 @@ export default function PostComposer() {
             {carouselMediaMissing && <p>Every carousel slide needs an uploaded image or public image URL.</p>}
             {carouselUrlInvalid && <p>Every carousel URL must start with http:// or https://.</p>}
             {scheduleIsTooSoon && <p>Scheduled time must be at least 10 minutes in the future.</p>}
-            {needsScheduleForRecurrence && <p>Recurring posts need a first scheduled date and time.</p>}
-            {scheduleTime && instagramTargetActive && <p>Instagram scheduling is not supported yet. Scheduled runs will publish/schedule Facebook and report Instagram as skipped.</p>}
+            {needsScheduleForRecurrence && <p>Recurring {storyMode ? 'Stories' : 'posts'} need a first scheduled date and time.</p>}
           </div>
         )}
 
@@ -1051,7 +1060,7 @@ export default function PostComposer() {
           </div>
           {recurrenceEnabled && (
             <p className={styles.scheduleHint}>
-              This will create {totalScheduledJobs} scheduled Facebook post{totalScheduledJobs === 1 ? '' : 's'}.
+              This will create {totalScheduledJobs} scheduled {storyMode ? 'Instagram Stories' : `${targetLabel} post${totalScheduledJobs === 1 ? '' : 's'}`}.
               Example: choose tomorrow at 9:00 AM and Daily to post every day at 9:00 AM.
             </p>
           )}
